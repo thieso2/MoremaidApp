@@ -1,0 +1,127 @@
+[vars]
+app_name = "Moremaid"
+scheme = "Moremaid"
+workspace = "Moremaid.xcworkspace"
+destination = "platform=macOS"
+derived_data = "~/Library/Developer/Xcode/DerivedData"
+app_bundle = "Moremaid.app"
+port = "13277"
+
+[tasks.generate]
+description = "Generate Xcode project from Tuist"
+run = "tuist generate --no-open"
+
+[tasks.build]
+description = "Build the app"
+depends = ["generate"]
+run = """
+xcodebuild -workspace {{vars.workspace}} \
+  -scheme {{vars.scheme}} \
+  -destination '{{vars.destination}}' \
+  build 2>&1 | tail -5
+"""
+
+[tasks.clean]
+description = "Clean build and DerivedData"
+run = """
+rm -rf {{vars.derived_data}}/{{vars.app_name}}-*
+echo "DerivedData cleaned"
+"""
+
+[tasks."clean-build"]
+description = "Clean DerivedData and rebuild from scratch"
+depends = ["clean", "generate"]
+run = """
+xcodebuild -workspace {{vars.workspace}} \
+  -scheme {{vars.scheme}} \
+  -destination '{{vars.destination}}' \
+  build 2>&1 | tail -5
+"""
+
+[tasks.run]
+description = "Build and run the app"
+depends = ["build"]
+run = """
+# Kill existing instance
+pkill -9 -f '{{vars.app_bundle}}/Contents/MacOS/{{vars.app_name}}' 2>/dev/null || true
+sleep 0.5
+
+# Find the built binary
+APP=$(find {{vars.derived_data}} -path "*/Debug/{{vars.app_bundle}}/Contents/MacOS/{{vars.app_name}}" -type f 2>/dev/null | head -1)
+
+if [ -z "$APP" ]; then
+  echo "Error: built binary not found"
+  exit 1
+fi
+
+echo "Launching $APP"
+"$APP" &
+sleep 2
+
+if lsof -i :{{vars.port}} -P | grep -q {{vars.app_name}}; then
+  echo "Server running on port {{vars.port}}"
+else
+  echo "Warning: server not bound to port {{vars.port}}"
+fi
+"""
+
+[tasks.stop]
+description = "Stop the running app"
+run = """
+pkill -9 -f '{{vars.app_bundle}}/Contents/MacOS/{{vars.app_name}}' 2>/dev/null && \
+  echo "{{vars.app_name}} stopped" || \
+  echo "{{vars.app_name}} not running"
+"""
+
+[tasks.restart]
+description = "Stop, rebuild, and run"
+depends = ["stop", "build"]
+run = """
+APP=$(find {{vars.derived_data}} -path "*/Debug/{{vars.app_bundle}}/Contents/MacOS/{{vars.app_name}}" -type f 2>/dev/null | head -1)
+"$APP" &
+sleep 2
+if lsof -i :{{vars.port}} -P | grep -q {{vars.app_name}}; then
+  echo "Server running on port {{vars.port}}"
+else
+  echo "Warning: server not bound to port {{vars.port}}"
+fi
+"""
+
+[tasks.test]
+description = "Run unit tests"
+depends = ["generate"]
+run = """
+xcodebuild -workspace {{vars.workspace}} \
+  -scheme {{vars.scheme}} \
+  -destination '{{vars.destination}}' \
+  test 2>&1 | grep -E '(Test Suite|Test Case|Executed|FAILED|PASSED|BUILD)' | tail -20
+"""
+
+[tasks.check-port]
+description = "Check what's listening on the server port"
+run = "lsof -i :{{vars.port}} -P || echo 'Port {{vars.port}} is free'"
+
+[tasks.log]
+description = "Tail the debug log"
+run = "tail -f /tmp/moremaid-debug.log 2>/dev/null || echo 'No debug log found'"
+
+[tasks.dist]
+description = "Copy built app bundle to .build/"
+depends = ["build"]
+run = """
+APP_SRC=$(find {{vars.derived_data}} -path "*/Debug/{{vars.app_bundle}}" -type d -maxdepth 5 2>/dev/null | head -1)
+
+if [ -z "$APP_SRC" ]; then
+  echo "Error: built app not found in DerivedData"
+  exit 1
+fi
+
+mkdir -p .build
+rm -rf .build/{{vars.app_bundle}}
+cp -R "$APP_SRC" .build/{{vars.app_bundle}}
+echo "Copied to .build/{{vars.app_bundle}}"
+"""
+
+[tasks.install]
+description = "Install Tuist dependencies"
+run = "tuist install"

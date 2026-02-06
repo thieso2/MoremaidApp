@@ -1,0 +1,27 @@
+# Tuist
+Derived/
+*.xcodeproj
+*.xcworkspace
+Tuist/.build/
+
+# Xcode
+build/
+DerivedData/
+*.pbxuser
+*.perspectivev3
+!default.pbxuser
+!default.perspectivev3
+xcuserdata/
+*.xccheckout
+*.moved-aside
+*.hmap
+*.ipa
+*.dSYM.zip
+*.dSYM
+
+# Swift Package Manager
+.build/
+Packages/
+
+# macOS
+.DS_Store

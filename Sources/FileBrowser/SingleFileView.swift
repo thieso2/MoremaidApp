@@ -4,6 +4,7 @@ struct SingleFileView: View {
     let filePath: String
     let sessionID: UUID
     @Environment(AppState.self) private var appState
+    @Environment(\.openWindow) private var openWindow
     @State private var webViewStore = WebViewStore()
     @State private var copyFeedback = false
     @State private var showFindBar = false
@@ -11,6 +12,7 @@ struct SingleFileView: View {
     @State private var findCurrent = 0
     @State private var findTotal = 0
     @FocusState private var findFieldFocused: Bool
+    @AppStorage("showStatusBar") private var showStatusBar = true
     @Environment(\.controlActiveState) private var controlActiveState
 
     private var isKeyWindow: Bool { controlActiveState == .key }
@@ -26,11 +28,29 @@ struct SingleFileView: View {
     var body: some View {
         webViewLayer
             .overlay(alignment: .top) { findBarOverlay }
+            .safeAreaInset(edge: .bottom, spacing: 0) { singleFileStatusBar }
             .navigationTitle(abbreviatePath(filePath))
             .navigationSubtitle(windowSubtitle)
             .navigationDocument(URL(fileURLWithPath: filePath))
             .toolbar { toolbarContent }
-            .task { loadFile() }
+            .toolbarRole(.editor)
+            .task {
+                webViewStore.onAnchorClicked = { anchor in
+                    Task { _ = await webViewStore.scrollToAnchor(anchor) }
+                }
+                webViewStore.onNavigateToFile = { path, _ in
+                    NSWorkspace.shared.open(URL(fileURLWithPath: path))
+                }
+                webViewStore.onOpenInNewTab = { path, _ in
+                    appState.queueNewTab(target: .file(path: path), selectedFile: path)
+                    openAsTab()
+                }
+                webViewStore.onOpenInNewWindow = { path, _ in
+                    appState.queueNewTab(target: .file(path: path), selectedFile: path)
+                    openWindow(id: "main")
+                }
+                loadFile()
+            }
     }
 
     private var webViewLayer: some View {
@@ -55,6 +75,15 @@ struct SingleFileView: View {
                 guard isKeyWindow else { return }
                 webViewStore.reload()
             }
+            .onReceive(NotificationCenter.default.publisher(for: .toggleStatusBar)) { _ in
+                guard isKeyWindow else { return }
+                withAnimation(.easeInOut(duration: 0.2)) { showStatusBar.toggle() }
+            }
+            .onReceive(NotificationCenter.default.publisher(for: .newTab)) { _ in
+                guard isKeyWindow else { return }
+                appState.queueNewTab(target: .file(path: filePath), selectedFile: filePath)
+                openAsTab()
+            }
     }
 
     private var windowSubtitle: String {
@@ -62,6 +91,25 @@ struct SingleFileView: View {
         let size = (attrs[.size] as? Int) ?? 0
         let date = (attrs[.modificationDate] as? Date) ?? Date()
         return "\(formatSize(size)) \u{2022} \(formatTimeAgo(date))"
+    }
+
+    // MARK: - Status Bar
+
+    @ViewBuilder
+    private var singleFileStatusBar: some View {
+        if showStatusBar {
+            HStack {
+                Text(webViewStore.hoveredLink.isEmpty ? " " : webViewStore.hoveredLink)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
+                    .truncationMode(.middle)
+                Spacer(minLength: 0)
+            }
+            .padding(.horizontal, 12)
+            .padding(.vertical, 3)
+            .background(.bar)
+        }
     }
 
     // MARK: - Find Bar (Liquid Glass)
@@ -153,8 +201,22 @@ struct SingleFileView: View {
             } label: {
                 Label(copyFeedback ? "Copied!" : "Copy Markdown", systemImage: "doc.on.doc")
             }
-            .buttonStyle(.glass)
             .help("Copy raw markdown to clipboard")
+        }
+    }
+
+    // MARK: - New Tab
+
+    private func openAsTab() {
+        let before = Set(NSApp.windows.map(\.windowNumber))
+        let sourceWindow = webViewStore.webView?.window
+        openWindow(id: "main")
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
+            guard let sourceWindow else { return }
+            if let newWindow = NSApp.windows.first(where: { !before.contains($0.windowNumber) && $0.canBecomeMain }) {
+                sourceWindow.addTabbedWindow(newWindow, ordered: .above)
+                newWindow.makeKeyAndOrderFront(nil)
+            }
         }
     }
 

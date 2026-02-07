@@ -7,9 +7,13 @@ import WebKit
 @MainActor
 class WebViewStore {
     var webView: WKWebView?
-    var onNavigateToFile: ((String) -> Void)?
+    var onNavigateToFile: ((String, String?) -> Void)?
+    var onOpenInNewTab: ((String, String?) -> Void)?
+    var onOpenInNewWindow: ((String, String?) -> Void)?
     var onAnchorClicked: ((String) -> Void)?
     var pendingScrollY: Double = 0
+    var pendingAnchor: String?
+    var hoveredLink: String = ""
     private(set) var rawContent: String?
     private(set) var currentFile: FileEntry?
     private(set) var currentBaseDirectory: String?
@@ -185,6 +189,17 @@ class WebViewStore {
     }
 
     func restorePendingScroll() {
+        if let anchor = pendingAnchor {
+            pendingAnchor = nil
+            pendingScrollY = 0
+            // Brief delay to let content render before scrolling to anchor
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) { [weak self] in
+                Task { @MainActor in
+                    _ = await self?.scrollToAnchor(anchor)
+                }
+            }
+            return
+        }
         guard pendingScrollY > 0 else { return }
         let y = pendingScrollY
         pendingScrollY = 0
@@ -233,6 +248,36 @@ class WebViewStore {
         } catch {
             print("[moremaid] scrollToAnchor(\(anchor)) JS error: \(error)")
             return 0
+        }
+    }
+
+    // MARK: - Headings (for TOC)
+
+    struct HeadingEntry: Codable, Identifiable {
+        let level: Int
+        let text: String
+        let id: String
+    }
+
+    func getHeadings() async -> [HeadingEntry] {
+        guard let webView else { return [] }
+        do {
+            let result = try await webView.evaluateJavaScript("getHeadingList();")
+            guard let json = result as? String,
+                  let data = json.data(using: .utf8) else { return [] }
+            return (try? JSONDecoder().decode([HeadingEntry].self, from: data)) ?? []
+        } catch {
+            return []
+        }
+    }
+
+    func getCurrentHeadingID() async -> String {
+        guard let webView else { return "" }
+        do {
+            let result = try await webView.evaluateJavaScript("getCurrentHeadingId();")
+            return result as? String ?? ""
+        } catch {
+            return ""
         }
     }
 
@@ -310,6 +355,57 @@ class WebViewStore {
     }
 }
 
+// MARK: - Custom WKWebView with Link Context Menu
+
+class MoremaidWebView: WKWebView {
+    /// Updated by the coordinator on linkHover messages (main thread only).
+    nonisolated(unsafe) var currentHoveredLink = ""
+    nonisolated(unsafe) var onContextOpenInNewTab: ((String, String?) -> Void)?
+    nonisolated(unsafe) var onContextOpenInNewWindow: ((String, String?) -> Void)?
+
+    override func willOpenMenu(_ menu: NSMenu, with event: NSEvent) {
+        let href = currentHoveredLink
+        if !href.isEmpty, let url = URL(string: href), url.isFileURL {
+            let path = url.path
+            let fragment = url.fragment
+            menu.removeAllItems()
+
+            let newTabItem = NSMenuItem(title: "Open Link in New Tab", action: #selector(ctxOpenInNewTab(_:)), keyEquivalent: "")
+            newTabItem.target = self
+            newTabItem.representedObject = LinkContext(path: path, fragment: fragment)
+            menu.addItem(newTabItem)
+
+            let newWindowItem = NSMenuItem(title: "Open Link in New Window", action: #selector(ctxOpenInNewWindow(_:)), keyEquivalent: "")
+            newWindowItem.target = self
+            newWindowItem.representedObject = LinkContext(path: path, fragment: fragment)
+            menu.addItem(newWindowItem)
+
+            let splitItem = NSMenuItem(title: "Open Link in Split View", action: nil, keyEquivalent: "")
+            menu.addItem(splitItem)
+        }
+        super.willOpenMenu(menu, with: event)
+    }
+
+    @objc private func ctxOpenInNewTab(_ sender: NSMenuItem) {
+        guard let ctx = sender.representedObject as? LinkContext else { return }
+        onContextOpenInNewTab?(ctx.path, ctx.fragment)
+    }
+
+    @objc private func ctxOpenInNewWindow(_ sender: NSMenuItem) {
+        guard let ctx = sender.representedObject as? LinkContext else { return }
+        onContextOpenInNewWindow?(ctx.path, ctx.fragment)
+    }
+}
+
+private class LinkContext: NSObject {
+    let path: String
+    let fragment: String?
+    init(path: String, fragment: String?) {
+        self.path = path
+        self.fragment = fragment
+    }
+}
+
 struct WebView: NSViewRepresentable {
     let store: WebViewStore
 
@@ -322,9 +418,10 @@ struct WebView: NSViewRepresentable {
         config.preferences.isElementFullscreenEnabled = true
         config.preferences.setValue(true, forKey: "allowFileAccessFromFileURLs")
 
-        // Bridge console.log → stdout
+        // Bridge console.log → stdout and link hover → status bar
         let handler = context.coordinator
         config.userContentController.add(handler, name: "nativeLog")
+        config.userContentController.add(handler, name: "linkHover")
         let consoleScript = WKUserScript(source: """
             (function() {
                 var orig = console.log;
@@ -355,8 +452,32 @@ struct WebView: NSViewRepresentable {
             """, injectionTime: .atDocumentStart, forMainFrameOnly: true)
         config.userContentController.addUserScript(consoleScript)
 
-        let webView = WKWebView(frame: .zero, configuration: config)
+        let linkHoverScript = WKUserScript(source: """
+            (function() {
+                document.addEventListener('mouseover', function(e) {
+                    var a = e.target.closest('a');
+                    if (a && a.href) {
+                        window.webkit.messageHandlers.linkHover.postMessage(a.href);
+                    }
+                });
+                document.addEventListener('mouseout', function(e) {
+                    var a = e.target.closest('a');
+                    if (a) {
+                        window.webkit.messageHandlers.linkHover.postMessage('');
+                    }
+                });
+            })();
+            """, injectionTime: .atDocumentEnd, forMainFrameOnly: true)
+        config.userContentController.addUserScript(linkHoverScript)
+
+        let webView = MoremaidWebView(frame: .zero, configuration: config)
         webView.navigationDelegate = context.coordinator
+        webView.onContextOpenInNewTab = { [weak store] path, fragment in
+            store?.onOpenInNewTab?(path, fragment)
+        }
+        webView.onContextOpenInNewWindow = { [weak store] path, fragment in
+            store?.onOpenInNewWindow?(path, fragment)
+        }
         store.webView = webView
         return webView
     }
@@ -373,6 +494,13 @@ struct WebView: NSViewRepresentable {
         }
 
         nonisolated func userContentController(_ controller: WKUserContentController, didReceive message: WKScriptMessage) {
+            if message.name == "linkHover", let href = message.body as? String {
+                (message.webView as? MoremaidWebView)?.currentHoveredLink = href
+                Task { @MainActor in
+                    self.store.hoveredLink = href
+                }
+                return
+            }
             if let body = message.body as? String {
                 print("[js] \(body)")
             }
@@ -393,7 +521,8 @@ struct WebView: NSViewRepresentable {
                 return .allow
             }
 
-            print("[moremaid] link clicked: \(url.absoluteString)")
+            let isCmdClick = navigationAction.modifierFlags.contains(.command)
+            print("[moremaid] link clicked: \(url.absoluteString)\(isCmdClick ? " (⌘-click)" : "")")
 
             // External links → open in browser
             if let scheme = url.scheme, ["http", "https"].contains(scheme) {
@@ -406,8 +535,8 @@ struct WebView: NSViewRepresentable {
             if url.isFileURL {
                 let path = url.path.hasSuffix("/") ? String(url.path.dropLast()) : url.path
 
-                // In-page anchor links (#section) → scroll and push history
-                if let fragment = url.fragment {
+                // In-page anchor links (#section) → scroll and push history (not for cmd-click)
+                if !isCmdClick, let fragment = url.fragment {
                     let baseDir = (store.currentBaseDirectory ?? "")
                     let currentFile = store.currentFile?.absolutePath
                     if path == baseDir || path == currentFile {
@@ -424,8 +553,14 @@ struct WebView: NSViewRepresentable {
                 let basePath = baseDir.hasSuffix("/") ? baseDir : baseDir + "/"
                 if path.hasPrefix(basePath) || path == baseDir {
                     if FileManager.default.fileExists(atPath: path) {
-                        print("[moremaid]   → navigating to \(path)")
-                        store.onNavigateToFile?(path)
+                        let fragment = url.fragment
+                        if isCmdClick {
+                            print("[moremaid]   → opening in new tab: \(path)\(fragment.map { "#\($0)" } ?? "")")
+                            store.onOpenInNewTab?(path, fragment)
+                        } else {
+                            print("[moremaid]   → navigating to \(path)\(fragment.map { "#\($0)" } ?? "")")
+                            store.onNavigateToFile?(path, fragment)
+                        }
                         return .cancel
                     } else {
                         print("[moremaid]   → ERROR: file not found at \(path)")

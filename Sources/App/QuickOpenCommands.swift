@@ -16,6 +16,10 @@ extension Notification.Name {
     static let reloadFile = Notification.Name("reloadFile")
     static let goBack = Notification.Name("goBack")
     static let goForward = Notification.Name("goForward")
+    static let toggleTOC = Notification.Name("toggleTOC")
+    static let newTab = Notification.Name("newTab")
+    static let toggleBreadcrumb = Notification.Name("toggleBreadcrumb")
+    static let toggleStatusBar = Notification.Name("toggleStatusBar")
 }
 
 /// Installs a local key event monitor for shortcuts that work regardless of focus.

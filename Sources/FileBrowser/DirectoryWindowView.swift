@@ -5,17 +5,27 @@ struct DirectoryWindowView: View {
     let sessionID: UUID
     let initialFilePath: String?
     @Environment(AppState.self) private var appState
+    @Environment(\.openWindow) private var openWindow
     @State private var selectedFile: FileEntry?
     @State private var webViewStore = WebViewStore()
     @State private var copyFeedback = false
     @State private var showQuickOpen = false
     @State private var projectFiles: [FileEntry] = []
     @State private var isScanning = false
+    @State private var scanGeneration = 0
     @State private var showFindBar = false
     @State private var findQuery = ""
     @State private var findCurrent = 0
     @State private var findTotal = 0
     @FocusState private var findFieldFocused: Bool
+    @State private var showTOC = false
+    @State private var headings: [WebViewStore.HeadingEntry] = []
+    @State private var currentHeadingID = ""
+    @State private var tocScrollTimer: Timer?
+    @State private var autoIndexTimer: Timer?
+    @State private var lastAutoIndexHash: Int?
+    @AppStorage("showBreadcrumb") private var showBreadcrumb = true
+    @AppStorage("showStatusBar") private var showStatusBar = true
     @Environment(\.controlActiveState) private var controlActiveState
 
     // MARK: - History
@@ -44,9 +54,16 @@ struct DirectoryWindowView: View {
             .navigationSubtitle(windowSubtitle)
             .navigationDocument(fileURL)
             .toolbar { toolbarContent }
+            .toolbarRole(.editor)
             .task {
-                webViewStore.onNavigateToFile = { path in
-                    navigateToFileAtPath(path)
+                webViewStore.onNavigateToFile = { path, fragment in
+                    navigateToFileAtPath(path, fragment: fragment)
+                }
+                webViewStore.onOpenInNewTab = { path, fragment in
+                    openInNewTab(path: path, fragment: fragment)
+                }
+                webViewStore.onOpenInNewWindow = { path, fragment in
+                    openInNewWindow(path: path, fragment: fragment)
                 }
                 webViewStore.onAnchorClicked = { anchor in
                     handleAnchorClick(anchor)
@@ -75,11 +92,19 @@ struct DirectoryWindowView: View {
     }
 
     private var contentView: some View {
-        webViewLayer
-            .overlay { placeholderOverlay }
-            .overlay { quickOpenOverlay }
-            .overlay(alignment: .top) { findBarOverlay }
-            .onChange(of: selectedFile) { handleFileChange() }
+        HStack(spacing: 0) {
+            if showTOC {
+                tocPanel
+                    .transition(.move(edge: .leading).combined(with: .opacity))
+            }
+            webViewLayer
+                .overlay { placeholderOverlay }
+                .overlay { quickOpenOverlay }
+                .overlay(alignment: .top) { findBarOverlay }
+                .safeAreaInset(edge: .top, spacing: 0) { breadcrumbBar }
+                .safeAreaInset(edge: .bottom, spacing: 0) { statusBar }
+        }
+        .onChange(of: selectedFile) { handleFileChange() }
     }
 
     private var webViewLayer: some View {
@@ -115,6 +140,30 @@ struct DirectoryWindowView: View {
             .onReceive(NotificationCenter.default.publisher(for: .goForward)) { _ in
                 guard isKeyWindow else { return }
                 goForward()
+            }
+            .onReceive(NotificationCenter.default.publisher(for: .toggleTOC)) { _ in
+                guard isKeyWindow else { return }
+                withAnimation(.easeInOut(duration: 0.2)) { showTOC.toggle() }
+                if showTOC {
+                    refreshHeadings()
+                    startTOCScrollTracking()
+                } else {
+                    stopTOCScrollTracking()
+                }
+            }
+            .onReceive(NotificationCenter.default.publisher(for: .newTab)) { _ in
+                guard isKeyWindow else { return }
+                let filePath = selectedFile.flatMap { isAutoIndex($0) ? nil : $0.absolutePath }
+                appState.queueNewTab(target: .directory(path: directoryPath), selectedFile: filePath)
+                openAsTab()
+            }
+            .onReceive(NotificationCenter.default.publisher(for: .toggleBreadcrumb)) { _ in
+                guard isKeyWindow else { return }
+                withAnimation(.easeInOut(duration: 0.2)) { showBreadcrumb.toggle() }
+            }
+            .onReceive(NotificationCenter.default.publisher(for: .toggleStatusBar)) { _ in
+                guard isKeyWindow else { return }
+                withAnimation(.easeInOut(duration: 0.2)) { showStatusBar.toggle() }
             }
     }
 
@@ -240,6 +289,156 @@ struct DirectoryWindowView: View {
         }
     }
 
+    // MARK: - Breadcrumbs
+
+    @ViewBuilder
+    private var breadcrumbBar: some View {
+        if showBreadcrumb, let file = selectedFile {
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(spacing: 4) {
+                    Button(directoryName) {
+                        selectedFile = makeAutoIndexEntry(for: directoryPath)
+                    }
+                    .buttonStyle(.plain)
+                    .foregroundStyle(.secondary)
+
+                    let components = file.relativePath.split(separator: "/").map(String.init)
+                    ForEach(Array(components.enumerated()), id: \.offset) { index, component in
+                        Image(systemName: "chevron.right")
+                            .font(.caption2)
+                            .foregroundStyle(.tertiary)
+
+                        if index < components.count - 1 {
+                            // Directory segment — navigate to its auto-index
+                            Button(component) {
+                                let subPath = components[0...index].joined(separator: "/")
+                                let fullPath = (directoryPath as NSString).appendingPathComponent(subPath)
+                                selectedFile = makeAutoIndexEntry(for: fullPath)
+                            }
+                            .buttonStyle(.plain)
+                            .foregroundStyle(.secondary)
+                        } else {
+                            // Current file/directory — not clickable
+                            Text(component)
+                                .foregroundStyle(.primary)
+                        }
+                    }
+                }
+                .font(.caption)
+            }
+            .padding(.horizontal, 12)
+            .padding(.vertical, 4)
+            .glassEffect(.regular, in: .rect(cornerRadius: 8))
+            .padding(.horizontal, 8)
+            .padding(.top, 4)
+        }
+    }
+
+    // MARK: - Status Bar
+
+    @ViewBuilder
+    private var statusBar: some View {
+        if showStatusBar {
+            HStack {
+                Text(webViewStore.hoveredLink.isEmpty ? " " : webViewStore.hoveredLink)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
+                    .truncationMode(.middle)
+                Spacer(minLength: 0)
+            }
+            .padding(.horizontal, 12)
+            .padding(.vertical, 3)
+            .background(.bar)
+        }
+    }
+
+    // MARK: - Table of Contents
+
+    private var tocPanel: some View {
+        HStack(spacing: 0) {
+            ScrollViewReader { proxy in
+                ScrollView {
+                    VStack(alignment: .leading, spacing: 0) {
+                        if headings.isEmpty {
+                            Text("No headings")
+                                .foregroundStyle(.tertiary)
+                                .font(.subheadline)
+                                .padding(16)
+                        } else {
+                            ForEach(headings) { heading in
+                                let isActive = heading.id == currentHeadingID
+                                Button {
+                                    Task { _ = await webViewStore.scrollToAnchor(heading.id) }
+                                } label: {
+                                    HStack {
+                                        Text(heading.text)
+                                            .font(heading.level == 1 ? .body : .callout)
+                                            .fontWeight(heading.level <= 2 ? .medium : .regular)
+                                            .foregroundStyle(isActive ? .primary : (heading.level <= 2 ? .primary : .secondary))
+                                            .lineLimit(1)
+                                            .truncationMode(.tail)
+                                        Spacer(minLength: 0)
+                                    }
+                                    .padding(.leading, CGFloat((heading.level - 1) * 14))
+                                    .padding(.vertical, 5)
+                                    .padding(.horizontal, 14)
+                                    .background(
+                                        isActive
+                                            ? RoundedRectangle(cornerRadius: 6).fill(.selection.opacity(0.3))
+                                            : nil
+                                    )
+                                    .contentShape(Rectangle())
+                                }
+                                .buttonStyle(.plain)
+                                .id(heading.id)
+                            }
+                        }
+                    }
+                    .padding(.vertical, 8)
+                }
+                .onChange(of: currentHeadingID) {
+                    if !currentHeadingID.isEmpty {
+                        withAnimation(.easeInOut(duration: 0.2)) {
+                            proxy.scrollTo(currentHeadingID, anchor: .center)
+                        }
+                    }
+                }
+            }
+            .frame(width: 220)
+            .frame(maxHeight: .infinity)
+            .background(.windowBackground)
+
+            Divider()
+        }
+    }
+
+
+    private func refreshHeadings() {
+        Task {
+            headings = await webViewStore.getHeadings()
+            currentHeadingID = await webViewStore.getCurrentHeadingID()
+        }
+    }
+
+    private func startTOCScrollTracking() {
+        stopTOCScrollTracking()
+        tocScrollTimer = Timer.scheduledTimer(withTimeInterval: 0.5, repeats: true) { _ in
+            Task { @MainActor in
+                guard showTOC else { return }
+                let id = await webViewStore.getCurrentHeadingID()
+                if id != currentHeadingID {
+                    currentHeadingID = id
+                }
+            }
+        }
+    }
+
+    private func stopTOCScrollTracking() {
+        tocScrollTimer?.invalidate()
+        tocScrollTimer = nil
+    }
+
     // MARK: - Toolbar
 
     @ToolbarContentBuilder
@@ -256,22 +455,25 @@ struct DirectoryWindowView: View {
             .disabled(!canGoForward)
         }
 
-        ToolbarItemGroup(placement: .primaryAction) {
-            if selectedFile != nil {
-                Button {
-                    webViewStore.copyMarkdown()
-                    copyFeedback = true
-                    DispatchQueue.main.asyncAfter(deadline: .now() + 2) { copyFeedback = false }
-                } label: {
-                    Label(copyFeedback ? "Copied!" : "Copy Markdown", systemImage: "doc.on.doc")
+        ToolbarItem(placement: .primaryAction) {
+            Button {
+                withAnimation(.easeInOut(duration: 0.2)) { showTOC.toggle() }
+                if showTOC {
+                    refreshHeadings()
+                    startTOCScrollTracking()
+                } else {
+                    stopTOCScrollTracking()
                 }
-                .buttonStyle(.glass)
-                .help("Copy raw markdown to clipboard (\u{2318}C)")
+            } label: {
+                Label("Table of Contents", systemImage: "sidebar.left")
             }
+            .help("Toggle Table of Contents (\u{21E7}\u{2318}T)")
         }
     }
 
     // MARK: - History Navigation
+
+    private static let maxHistorySize = 100
 
     private func pushToHistory(_ file: FileEntry) {
         // Trim forward history
@@ -279,6 +481,11 @@ struct DirectoryWindowView: View {
             fileHistory = Array(fileHistory[0...historyIndex])
         }
         fileHistory.append(HistoryEntry(file: file))
+        // Cap history
+        if fileHistory.count > Self.maxHistorySize {
+            let excess = fileHistory.count - Self.maxHistorySize
+            fileHistory.removeFirst(excess)
+        }
         historyIndex = fileHistory.count - 1
     }
 
@@ -316,7 +523,7 @@ struct DirectoryWindowView: View {
     }
 
     /// Navigate to a file or directory by absolute path (from relative link clicks).
-    private func navigateToFileAtPath(_ path: String) {
+    private func navigateToFileAtPath(_ path: String, fragment: String? = nil) {
         var isDir: ObjCBool = false
         guard FileManager.default.fileExists(atPath: path, isDirectory: &isDir) else {
             print("[moremaid] navigateToFileAtPath: path does not exist: \(path)")
@@ -329,12 +536,41 @@ struct DirectoryWindowView: View {
             return
         }
 
-        print("[moremaid] navigateToFileAtPath: file: \(path)")
+        if let fragment {
+            webViewStore.pendingAnchor = fragment
+        }
+
+        print("[moremaid] navigateToFileAtPath: file: \(path)\(fragment.map { "#\($0)" } ?? "")")
         if let existing = projectFiles.first(where: { $0.absolutePath == path }) {
             selectedFile = existing
             return
         }
         selectedFile = makeFileEntry(absolutePath: path)
+    }
+
+    // MARK: - New Tab / Window
+
+    private func openInNewTab(path: String, fragment: String?) {
+        appState.queueNewTab(target: .directory(path: directoryPath), selectedFile: path)
+        openAsTab()
+    }
+
+    private func openInNewWindow(path: String, fragment: String?) {
+        appState.queueNewTab(target: .directory(path: directoryPath), selectedFile: path)
+        openWindow(id: "main")
+    }
+
+    private func openAsTab() {
+        let before = Set(NSApp.windows.map(\.windowNumber))
+        let sourceWindow = webViewStore.webView?.window
+        openWindow(id: "main")
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
+            guard let sourceWindow else { return }
+            if let newWindow = NSApp.windows.first(where: { !before.contains($0.windowNumber) && $0.canBecomeMain }) {
+                sourceWindow.addTabbedWindow(newWindow, ordered: .above)
+                newWindow.makeKeyAndOrderFront(nil)
+            }
+        }
     }
 
     // MARK: - Handlers
@@ -361,6 +597,7 @@ struct DirectoryWindowView: View {
 
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
             webViewStore.becomeFirstResponder()
+            if showTOC { refreshHeadings() }
         }
     }
 
@@ -448,13 +685,17 @@ struct DirectoryWindowView: View {
 
     private func scanFiles() {
         isScanning = true
+        scanGeneration += 1
+        let generation = scanGeneration
+        projectFiles = []
 
         // Load saved/default file immediately — no waiting for full scan
         tryLoadInitialFile()
 
         // Full background scan for Quick Open
-        FileScanner.scanBatched(directory: directoryPath, filter: .allFiles, batchSize: 50) { batch, done in
+        FileScanner.scanBatched(directory: directoryPath, filter: .allFiles, batchSize: 200) { batch, done in
             DispatchQueue.main.async {
+                guard generation == scanGeneration else { return }
                 projectFiles.append(contentsOf: batch)
                 if done {
                     isScanning = false
@@ -550,15 +791,42 @@ struct DirectoryWindowView: View {
     private func loadFileOrAutoIndex(_ file: FileEntry) {
         if isAutoIndex(file) {
             let content = generateAutoIndex(for: file.absolutePath)
+            lastAutoIndexHash = content.hashValue
             webViewStore.loadMarkdown(content: content, title: file.name, contentDirectory: file.absolutePath, baseDirectory: directoryPath)
+            startAutoIndexWatcher(for: file.absolutePath)
         } else {
+            stopAutoIndexWatcher()
             webViewStore.load(file: file, baseDirectory: directoryPath)
         }
+    }
+
+    // MARK: - Auto-Index File Watcher
+
+    private func startAutoIndexWatcher(for dirPath: String) {
+        stopAutoIndexWatcher()
+        autoIndexTimer = Timer.scheduledTimer(withTimeInterval: 2.0, repeats: true) { [dirPath] _ in
+            Task { @MainActor in
+                let content = generateAutoIndex(for: dirPath)
+                let hash = content.hashValue
+                guard hash != lastAutoIndexHash else { return }
+                lastAutoIndexHash = hash
+                let escaped = content.jsonStringLiteral
+                webViewStore.webView?.evaluateJavaScript("reRenderMarkdown(\(escaped));", completionHandler: nil)
+            }
+        }
+    }
+
+    private func stopAutoIndexWatcher() {
+        autoIndexTimer?.invalidate()
+        autoIndexTimer = nil
+        lastAutoIndexHash = nil
     }
 
     private func generateAutoIndex(for dirPath: String) -> String {
         let dirName = (dirPath as NSString).lastPathComponent
         let items = (try? FileManager.default.contentsOfDirectory(atPath: dirPath)) ?? []
+        let gitignore = GitignoreParser(basePath: directoryPath)
+        let basePath = directoryPath.hasSuffix("/") ? directoryPath : directoryPath + "/"
 
         var dirs: [(name: String, date: Date)] = []
         var files: [(name: String, size: Int, date: Date)] = []
@@ -566,6 +834,8 @@ struct DirectoryWindowView: View {
         for item in items.sorted(by: { $0.localizedCaseInsensitiveCompare($1) == .orderedAscending }) {
             guard !item.hasPrefix(".") else { continue }
             let fullPath = (dirPath as NSString).appendingPathComponent(item)
+            let relativePath = fullPath.hasPrefix(basePath) ? String(fullPath.dropFirst(basePath.count)) : item
+            if gitignore.isIgnored(relativePath) { continue }
             var isDir: ObjCBool = false
             FileManager.default.fileExists(atPath: fullPath, isDirectory: &isDir)
             let attrs = try? FileManager.default.attributesOfItem(atPath: fullPath)

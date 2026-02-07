@@ -44,12 +44,41 @@ let project = Project(
             resources: ["Resources/**"],
             dependencies: [
                 .external(name: "ZIPFoundation"),
+                .target(name: "MoremaidQuickLook"),
             ],
             settings: .settings(
                 base: [
                     "SWIFT_VERSION": "6.0",
                     "SWIFT_STRICT_CONCURRENCY": "complete",
                     "CODE_SIGN_ENTITLEMENTS": "Moremaid.entitlements",
+                ]
+            )
+        ),
+        .target(
+            name: "MoremaidQuickLook",
+            destinations: .macOS,
+            product: .appExtension,
+            bundleId: "com.moremaid.app.quicklook",
+            deploymentTargets: .macOS("26.0"),
+            infoPlist: .extendingDefault(with: [
+                "CFBundleShortVersionString": "1.0.0",
+                "NSExtension": .dictionary([
+                    "NSExtensionPointIdentifier": "com.apple.quicklook.preview",
+                    "NSExtensionPrincipalClass": "$(PRODUCT_MODULE_NAME).PreviewProvider",
+                ]),
+                "QLSupportedContentTypes": .array([
+                    "net.daringfireball.markdown",
+                    "public.plain-text",
+                ]),
+                "QLSupportsSearchableItems": true,
+            ]),
+            sources: ["QuickLook/**"],
+            resources: ["QuickLook/Resources/**"],
+            dependencies: [],
+            settings: .settings(
+                base: [
+                    "SWIFT_VERSION": "6.0",
+                    "SWIFT_STRICT_CONCURRENCY": "complete",
                 ]
             )
         ),

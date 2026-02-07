@@ -19,6 +19,7 @@ enum PageScripts {
         \(codeCopyButtonsScript)
         \(markedRenderScript)
         \(liveRerenderScript)
+        \(headingListScript)
         \(findInPageScript)
         \(searchQueryJS != "null" ? searchHighlightScript(searchQueryJS: searchQueryJS) : "")
         """
@@ -188,6 +189,7 @@ enum PageScripts {
 
         var contentDiv = document.getElementById('content');
         if (contentDiv && rawMarkdown) {
+            markedGfmHeadingId.resetHeadings();
             var htmlContent = marked.parse(rawMarkdown);
 
             var aliases = [
@@ -318,6 +320,31 @@ enum PageScripts {
         code.textContent = newContent;
         code.className = 'language-' + language;
         try { Prism.highlightAll(); } catch(e) {}
+    }
+    """
+
+    // MARK: - Heading List (for TOC)
+
+    private static let headingListScript = """
+    function getHeadingList() {
+        var headings = document.querySelectorAll('h1, h2, h3, h4, h5, h6');
+        var result = [];
+        headings.forEach(function(h) {
+            result.push({ level: parseInt(h.tagName[1]), text: h.textContent, id: h.id });
+        });
+        return JSON.stringify(result);
+    }
+
+    function getCurrentHeadingId() {
+        var headings = document.querySelectorAll('h1, h2, h3, h4, h5, h6');
+        var current = '';
+        var scrollY = window.scrollY;
+        for (var i = 0; i < headings.length; i++) {
+            if (headings[i].getBoundingClientRect().top + scrollY <= scrollY + 60) {
+                current = headings[i].id;
+            }
+        }
+        return current;
     }
     """
 

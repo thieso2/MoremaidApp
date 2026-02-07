@@ -260,6 +260,15 @@ struct AppCommands: Commands {
             .keyboardShortcut("k", modifiers: .command)
         }
 
+        CommandGroup(after: .newItem) {
+            Button {
+                NotificationCenter.default.post(name: .newTab, object: nil)
+            } label: {
+                Label("New Tab", systemImage: "plus.square.on.square")
+            }
+            .keyboardShortcut("t", modifiers: .command)
+        }
+
         CommandGroup(replacing: .printItem) {
             Button {
                 NotificationCenter.default.post(name: .exportPDF, object: nil)
@@ -299,7 +308,7 @@ struct AppCommands: Commands {
             .keyboardShortcut("e", modifiers: .command)
         }
 
-        CommandMenu("View") {
+        CommandGroup(before: .toolbar) {
             Button {
                 NotificationCenter.default.post(name: .goBack, object: nil)
             } label: {
@@ -313,6 +322,27 @@ struct AppCommands: Commands {
                 Label("Forward", systemImage: "chevron.forward")
             }
             .keyboardShortcut("]", modifiers: .command)
+
+            Divider()
+
+            Button {
+                NotificationCenter.default.post(name: .toggleTOC, object: nil)
+            } label: {
+                Label("Table of Contents", systemImage: "list.bullet")
+            }
+            .keyboardShortcut("t", modifiers: [.command, .shift])
+
+            Button {
+                NotificationCenter.default.post(name: .toggleBreadcrumb, object: nil)
+            } label: {
+                Label("Breadcrumb Bar", systemImage: "chevron.right")
+            }
+
+            Button {
+                NotificationCenter.default.post(name: .toggleStatusBar, object: nil)
+            } label: {
+                Label("Status Bar", systemImage: "rectangle.bottomhalf.filled")
+            }
 
             Divider()
 
@@ -345,6 +375,8 @@ struct AppCommands: Commands {
                 Label("Actual Size", systemImage: "1.magnifyingglass")
             }
             .keyboardShortcut("0", modifiers: .command)
+
+            Divider()
         }
     }
 }

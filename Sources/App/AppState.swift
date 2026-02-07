@@ -58,6 +58,10 @@ final class AppState {
 
     var pendingSessionCount: Int { pendingSessions.count }
 
+    func queueNewTab(target: OpenTarget, selectedFile: String?) {
+        pendingSessions.append(WindowSession(target: target, selectedFile: selectedFile))
+    }
+
     func registerSession(id: UUID, target: OpenTarget, selectedFile: String?, frame: NSRect? = nil) {
         var session = WindowSession(target: target, selectedFile: selectedFile)
         if let frame {

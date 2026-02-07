@@ -48,7 +48,6 @@ enum Constants {
 
     // MARK: - Persistence
     static let appSupportDirectory = "Moremaid"
-    static let projectsFilename = "projects.json"
 
     // MARK: - Themes
     static let availableThemes = [

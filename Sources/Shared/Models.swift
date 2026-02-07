@@ -1,59 +1,20 @@
 import Foundation
 
-// MARK: - Project
+// MARK: - Open Target
 
-@Observable
-final class Project: Identifiable, Codable, @unchecked Sendable {
-    let id: UUID
-    var name: String
-    var path: String
-    var addedDate: Date
-    var isActive: Bool
-    var themeOverride: String?
-    var typographyOverride: String?
+enum OpenTarget: Codable, Hashable {
+    case file(path: String)
+    case directory(path: String)
 
-    init(
-        id: UUID = UUID(),
-        name: String,
-        path: String,
-        addedDate: Date = Date(),
-        isActive: Bool = true,
-        themeOverride: String? = nil,
-        typographyOverride: String? = nil
-    ) {
-        self.id = id
-        self.name = name
-        self.path = path
-        self.addedDate = addedDate
-        self.isActive = isActive
-        self.themeOverride = themeOverride
-        self.typographyOverride = typographyOverride
+    var path: String {
+        switch self {
+        case .file(let path): path
+        case .directory(let path): path
+        }
     }
 
-    enum CodingKeys: String, CodingKey {
-        case id, name, path, addedDate, isActive, themeOverride, typographyOverride
-    }
-
-    required init(from decoder: Decoder) throws {
-        let container = try decoder.container(keyedBy: CodingKeys.self)
-        id = try container.decode(UUID.self, forKey: .id)
-        name = try container.decode(String.self, forKey: .name)
-        path = try container.decode(String.self, forKey: .path)
-        addedDate = try container.decode(Date.self, forKey: .addedDate)
-        isActive = try container.decode(Bool.self, forKey: .isActive)
-        themeOverride = try container.decodeIfPresent(String.self, forKey: .themeOverride)
-        typographyOverride = try container.decodeIfPresent(String.self, forKey: .typographyOverride)
-    }
-
-    func encode(to encoder: Encoder) throws {
-        var container = encoder.container(keyedBy: CodingKeys.self)
-        try container.encode(id, forKey: .id)
-        try container.encode(name, forKey: .name)
-        try container.encode(path, forKey: .path)
-        try container.encode(addedDate, forKey: .addedDate)
-        try container.encode(isActive, forKey: .isActive)
-        try container.encodeIfPresent(themeOverride, forKey: .themeOverride)
-        try container.encodeIfPresent(typographyOverride, forKey: .typographyOverride)
+    var displayName: String {
+        (path as NSString).lastPathComponent
     }
 }
 

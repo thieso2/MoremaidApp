@@ -358,5 +358,34 @@ enum BaseCSS {
         color: var(--link-color);
         font-size: 14px;
     }
+
+    /* Print styles — force light colors so dark themes don't produce invisible text */
+    @media print {
+        :root, [data-theme] {
+            --bg-color: white !important;
+            --bg-color-rgb: 255, 255, 255 !important;
+            --text-color: #333 !important;
+            --heading-color: #2c3e50 !important;
+            --heading2-color: #34495e !important;
+            --border-color: #ddd !important;
+            --code-bg: #f4f4f4 !important;
+            --code-color: #d14 !important;
+            --link-color: #2c3e50 !important;
+            --blockquote-color: #555 !important;
+            --table-header-bg: #f0f0f0 !important;
+            --table-border: #ddd !important;
+            --file-info-bg: #f5f5f5 !important;
+            --file-info-color: #666 !important;
+        }
+        .controls-trigger, .controls, .file-buttons-container { display: none !important; }
+        .zoom-container { transform: none !important; width: 100% !important; height: auto !important; padding: 10px 0 0 0 !important; min-height: auto !important; }
+        .container { max-width: 100% !important; }
+        body { -webkit-print-color-adjust: exact; print-color-adjust: exact; padding: 0 !important; }
+        pre, code { white-space: pre-wrap !important; word-wrap: break-word !important; }
+        h1, h2, h3, h4, h5, h6 { break-after: avoid; }
+        p, li, blockquote { orphans: 3; widows: 3; }
+        pre, table, img, figure, .mermaid-container { break-inside: avoid; }
+        tr { break-inside: avoid; }
+    }
     """
 }

@@ -38,6 +38,16 @@ func formatFullDate(_ date: Date) -> String {
     return formatter.string(from: date)
 }
 
+// MARK: - Path Abbreviation
+
+func abbreviatePath(_ path: String) -> String {
+    let home = NSHomeDirectory()
+    if path.hasPrefix(home) {
+        return "~" + path.dropFirst(home.count)
+    }
+    return path
+}
+
 // MARK: - Markdown Extension Check
 
 func isMarkdownFile(_ path: String) -> Bool {

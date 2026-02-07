@@ -1,49 +1,36 @@
 import Foundation
 
-/// All embedded JavaScript for rendered HTML pages.
-/// Ported from ../lib/html-generator.js lines 882-1681.
+/// All JavaScript for rendered HTML pages.
 enum PageScripts {
-    /// Full script block for markdown pages.
-    static func allScripts(
+    /// Script block for markdown pages.
+    static func markdownScripts(
         rawMarkdownJSON: String,
         titleJSON: String,
         forceThemeJS: String,
-        searchQueryJS: String,
-        isServer: Bool
+        searchQueryJS: String
     ) -> String {
         return """
-        // Store raw markdown for copy functionality
         var rawMarkdown = \(rawMarkdownJSON);
         var documentTitle = \(titleJSON);
 
         \(themeScript(forceThemeJS: forceThemeJS))
-        \(typographyScript)
-        \(zoomScript)
-        \(controlsToggleScript)
-        \(copyButtonScript)
-        \(pdfButtonScript)
-        \(zoomControlsScript)
-        \(zoomKeyboardScript)
         \(mermaidInitScript)
         \(mermaidFullscreenScript)
         \(codeCopyButtonsScript)
         \(markedRenderScript)
-        \(isServer ? webSocketScript : "")
+        \(liveRerenderScript)
+        \(findInPageScript)
         \(searchQueryJS != "null" ? searchHighlightScript(searchQueryJS: searchQueryJS) : "")
         """
     }
 
-    /// Simplified script block for code pages.
+    /// Script block for code pages.
     static func codePageScripts(forceThemeJS: String) -> String {
         return """
         \(themeScript(forceThemeJS: forceThemeJS))
-        \(typographyScript)
-        \(zoomScript)
-        \(controlsToggleScript)
-        \(copyButtonScript)
-        \(zoomControlsScript)
-        \(zoomKeyboardScript)
         \(codeCopyButtonsScript)
+        \(liveRerenderScript)
+        \(findInPageScript)
         document.addEventListener('DOMContentLoaded', function() {
             setTimeout(function() {
                 try { Prism.highlightAll(); } catch(e) { console.error('Prism error:', e); }
@@ -71,184 +58,20 @@ enum PageScripts {
 
         function initTheme() {
             var forcedTheme = \(forceThemeJS);
-            var savedTheme = localStorage.getItem('theme');
-            var systemPrefersDark = window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches;
-            var defaultTheme = forcedTheme || savedTheme || (systemPrefersDark ? 'dark' : 'light');
-            var theme = themes[defaultTheme] ? defaultTheme : 'light';
+            var theme = (forcedTheme && themes[forcedTheme]) ? forcedTheme : 'light';
             document.documentElement.setAttribute('data-theme', theme);
-            updateThemeSelector(theme);
             return theme;
-        }
-
-        function updateThemeSelector(theme) {
-            var selector = document.getElementById('themeSelector');
-            if (selector) selector.value = theme;
         }
 
         function switchTheme(newTheme) {
             if (!themes[newTheme]) return;
             document.documentElement.setAttribute('data-theme', newTheme);
-            localStorage.setItem('theme', newTheme);
-            updateThemeSelector(newTheme);
             if (typeof initializeMermaid === 'function') initializeMermaid(newTheme);
         }
 
         var currentTheme = initTheme();
-
-        document.getElementById('themeSelector').addEventListener('change', function(e) {
-            switchTheme(e.target.value);
-        });
         """
     }
-
-    // MARK: - Typography
-
-    private static let typographyScript = """
-    function switchTypography(typography) {
-        document.body.setAttribute('data-typography', typography);
-        localStorage.setItem('preferredTypography', typography);
-    }
-
-    function loadPreferredTypography() {
-        var saved = localStorage.getItem('preferredTypography') || 'default';
-        switchTypography(saved);
-        var selector = document.getElementById('typographySelector');
-        if (selector) selector.value = saved;
-    }
-
-    document.getElementById('typographySelector').addEventListener('change', function(e) {
-        switchTypography(e.target.value);
-    });
-
-    loadPreferredTypography();
-    """
-
-    // MARK: - Zoom
-
-    private static let zoomScript = """
-    var currentZoom = 100;
-
-    function setZoom(scale) {
-        var zoomContainer = document.getElementById('zoomContainer');
-        if (zoomContainer) {
-            zoomContainer.style.transform = 'scale(' + scale + ')';
-            zoomContainer.style.transformOrigin = '0 0';
-            zoomContainer.style.width = (100 / scale) + '%';
-            zoomContainer.style.height = (100 / scale) + '%';
-        }
-    }
-
-    function updateZoom(zoomLevel) {
-        currentZoom = Math.max(50, Math.min(200, zoomLevel));
-        setZoom(currentZoom / 100);
-        document.getElementById('zoomValue').textContent = currentZoom + '%';
-        localStorage.setItem('zoom', currentZoom);
-    }
-
-    var savedZoom = localStorage.getItem('zoom');
-    if (savedZoom) {
-        currentZoom = parseInt(savedZoom);
-        updateZoom(currentZoom);
-    }
-    """
-
-    // MARK: - Controls Toggle
-
-    private static let controlsToggleScript = """
-    var controlsTrigger = document.querySelector('.controls-trigger');
-    var controls = document.querySelector('.controls');
-    var controlsVisible = false;
-
-    if (controlsTrigger && controls) {
-        controlsTrigger.addEventListener('click', function() {
-            controlsVisible = !controlsVisible;
-            if (controlsVisible) {
-                controls.classList.add('visible');
-            } else {
-                controls.classList.remove('visible');
-            }
-        });
-
-        document.addEventListener('click', function(e) {
-            if (!controlsTrigger.contains(e.target) && !controls.contains(e.target)) {
-                controlsVisible = false;
-                controls.classList.remove('visible');
-            }
-        });
-    }
-    """
-
-    // MARK: - Copy Button
-
-    private static let copyButtonScript = """
-    var copyButton = document.getElementById('copyButton');
-    if (copyButton) {
-        copyButton.addEventListener('click', async function() {
-            try {
-                await navigator.clipboard.writeText(rawMarkdown);
-                copyButton.textContent = 'Copied!';
-                setTimeout(function() { copyButton.textContent = 'Copy'; }, 2000);
-            } catch (err) {
-                console.error('Failed to copy:', err);
-                copyButton.textContent = 'Failed';
-                setTimeout(function() { copyButton.textContent = 'Copy'; }, 2000);
-            }
-        });
-    }
-    """
-
-    // MARK: - PDF Button
-
-    private static let pdfButtonScript = """
-    var downloadPdfButton = document.getElementById('downloadPdfButton');
-    if (downloadPdfButton) {
-        downloadPdfButton.addEventListener('click', async function() {
-            try {
-                downloadPdfButton.textContent = 'Generating...';
-                downloadPdfButton.disabled = true;
-                var params = new URLSearchParams(window.location.search);
-                params.set('path', documentTitle);
-                var response = await fetch('/api/pdf?' + params.toString());
-                if (!response.ok) throw new Error('PDF generation failed: ' + response.statusText);
-                var blob = await response.blob();
-                var url = window.URL.createObjectURL(blob);
-                var a = document.createElement('a');
-                a.href = url;
-                a.download = documentTitle.replace(/\\.md$/, '') + '.pdf';
-                document.body.appendChild(a);
-                a.click();
-                window.URL.revokeObjectURL(url);
-                document.body.removeChild(a);
-                downloadPdfButton.textContent = 'Downloaded!';
-                setTimeout(function() { downloadPdfButton.textContent = 'PDF'; downloadPdfButton.disabled = false; }, 2000);
-            } catch (err) {
-                console.error('Failed to download PDF:', err);
-                downloadPdfButton.textContent = 'Failed';
-                setTimeout(function() { downloadPdfButton.textContent = 'PDF'; downloadPdfButton.disabled = false; }, 2000);
-            }
-        });
-    }
-    """
-
-    // MARK: - Zoom Controls
-
-    private static let zoomControlsScript = """
-    document.getElementById('zoomIn').addEventListener('click', function() { updateZoom(currentZoom + 10); });
-    document.getElementById('zoomOut').addEventListener('click', function() { updateZoom(currentZoom - 10); });
-    document.getElementById('zoomReset').addEventListener('click', function() { updateZoom(100); });
-    """
-
-    // MARK: - Zoom Keyboard
-
-    private static let zoomKeyboardScript = """
-    document.addEventListener('keydown', function(e) {
-        if (e.ctrlKey || e.metaKey) {
-            if (e.key === '=' || e.key === '+') { e.preventDefault(); updateZoom(currentZoom + 10); }
-            else if (e.key === '-') { e.preventDefault(); updateZoom(currentZoom - 10); }
-            else if (e.key === '0') { e.preventDefault(); updateZoom(100); }
-        }
-    });
-    """
 
     // MARK: - Mermaid Init
 
@@ -360,15 +183,13 @@ enum PageScripts {
 
     private static let markedRenderScript = """
     document.addEventListener('DOMContentLoaded', async function() {
-        // Configure marked
+        marked.use(markedGfmHeadingId.gfmHeadingId());
         marked.setOptions({ breaks: true, gfm: true, langPrefix: 'language-' });
 
-        // Render markdown
         var contentDiv = document.getElementById('content');
         if (contentDiv && rawMarkdown) {
             var htmlContent = marked.parse(rawMarkdown);
 
-            // Fix language aliases
             var aliases = [
                 ['class="language-js"', 'class="language-javascript"'],
                 ['class="language-ts"', 'class="language-typescript"'],
@@ -383,7 +204,6 @@ enum PageScripts {
                 htmlContent = htmlContent.split(pair[0]).join(pair[1]);
             });
 
-            // Process mermaid blocks
             htmlContent = htmlContent.replace(/<pre><code class="language-mermaid">([\\s\\S]*?)<\\/code><\\/pre>/g,
                 function(match, code) {
                     return '<div class="mermaid">' + code.replace(/&lt;/g,'<').replace(/&gt;/g,'>').replace(/&amp;/g,'&').replace(/&quot;/g,'"').replace(/&#39;/g,"'") + '</div>';
@@ -391,12 +211,10 @@ enum PageScripts {
 
             contentDiv.innerHTML = htmlContent;
 
-            // Syntax highlighting
             setTimeout(function() {
                 try { Prism.highlightAll(); addCopyButtons(); } catch(e) { console.error('Prism error:', e); }
             }, 10);
 
-            // Render mermaid diagrams
             var diagrams = contentDiv.querySelectorAll('.mermaid');
             for (var i = 0; i < diagrams.length; i++) {
                 var diagram = diagrams[i];
@@ -428,45 +246,186 @@ enum PageScripts {
     });
     """
 
-    // MARK: - WebSocket
+    // MARK: - Live Re-render
 
-    private static let webSocketScript = """
-    window.ws = null;
+    private static let liveRerenderScript = """
+    async function reRenderMarkdown(newMarkdown) {
+        rawMarkdown = newMarkdown;
+        var contentDiv = document.getElementById('content');
+        if (!contentDiv) return;
 
-    function connectWebSocket() {
-        var protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-        window.ws = new WebSocket(protocol + '//' + window.location.host + '/ws');
+        markedGfmHeadingId.resetHeadings();
+        var htmlContent = marked.parse(rawMarkdown);
 
-        window.ws.onopen = function() { console.log('WebSocket connected'); };
+        var aliases = [
+            ['class="language-js"', 'class="language-javascript"'],
+            ['class="language-ts"', 'class="language-typescript"'],
+            ['class="language-py"', 'class="language-python"'],
+            ['class="language-rb"', 'class="language-ruby"'],
+            ['class="language-yml"', 'class="language-yaml"'],
+            ['class="language-sh"', 'class="language-bash"'],
+            ['class="language-shell"', 'class="language-bash"'],
+            ['class="language-cs"', 'class="language-csharp"']
+        ];
+        aliases.forEach(function(pair) {
+            htmlContent = htmlContent.split(pair[0]).join(pair[1]);
+        });
 
-        window.ws.onmessage = function(event) {
-            if (event.data === 'reload') {
-                window.location.reload();
+        htmlContent = htmlContent.replace(/<pre><code class="language-mermaid">([\\s\\S]*?)<\\/code><\\/pre>/g,
+            function(match, code) {
+                return '<div class="mermaid">' + code.replace(/&lt;/g,'<').replace(/&gt;/g,'>').replace(/&amp;/g,'&').replace(/&quot;/g,'"').replace(/&#39;/g,"'") + '</div>';
+            });
+
+        contentDiv.innerHTML = htmlContent;
+
+        setTimeout(function() {
+            try { Prism.highlightAll(); addCopyButtons(); } catch(e) {}
+        }, 10);
+
+        var diagrams = contentDiv.querySelectorAll('.mermaid');
+        for (var i = 0; i < diagrams.length; i++) {
+            var diagram = diagrams[i];
+            var graphDefinition = diagram.textContent;
+            var id = 'mermaid-re-' + Date.now() + '-' + i;
+            try {
+                var result = await mermaid.render(id, graphDefinition);
+                var container = document.createElement('div');
+                container.className = 'mermaid-container';
+                var svgContainer = document.createElement('div');
+                svgContainer.innerHTML = result.svg;
+                container.appendChild(svgContainer);
+                var fullscreenBtn = document.createElement('button');
+                fullscreenBtn.className = 'mermaid-fullscreen-btn';
+                fullscreenBtn.innerHTML = '\\u26F6';
+                fullscreenBtn.title = 'Open in new window';
+                (function(def) {
+                    fullscreenBtn.onclick = function(e) { e.stopPropagation(); openMermaidInNewWindow(def); };
+                })(graphDefinition);
+                container.appendChild(fullscreenBtn);
+                diagram.innerHTML = '';
+                diagram.appendChild(container);
+            } catch (error) {
+                diagram.innerHTML = '<div style="color:#e74c3c;padding:20px;background:#ffecec;border-radius:5px;">Error: ' + error.message + '</div>';
             }
-        };
-
-        window.ws.onclose = function() {
-            console.log('WebSocket disconnected');
-            var childCount = window.childWindows ? window.childWindows.length : 0;
-            if (childCount > 0) {
-                var childrenToClose = window.childWindows.slice();
-                childrenToClose.forEach(function(childWindow) {
-                    try { if (childWindow && !childWindow.closed) childWindow.close(); } catch(e) {}
-                });
-                window.childWindows = [];
-            }
-        };
-
-        window.ws.onerror = function(error) { console.error('WebSocket error:', error); };
-
-        setInterval(function() {
-            if (window.ws && window.ws.readyState === WebSocket.OPEN) {
-                window.ws.send('ping');
-            }
-        }, 30000);
+        }
     }
 
-    connectWebSocket();
+    function reRenderCode(newContent, language) {
+        var pre = document.querySelector('pre');
+        if (!pre) return;
+        var code = pre.querySelector('code');
+        if (!code) return;
+        code.textContent = newContent;
+        code.className = 'language-' + language;
+        try { Prism.highlightAll(); } catch(e) {}
+    }
+    """
+
+    // MARK: - Find in Page
+
+    private static let findInPageScript = """
+    (function() {
+        var findMatches = [];
+        var findCurrentIndex = -1;
+        var findOriginalNodes = [];
+
+        function findClearHighlights() {
+            document.querySelectorAll('mark.find-highlight').forEach(function(mark) {
+                var parent = mark.parentNode;
+                parent.replaceChild(document.createTextNode(mark.textContent), mark);
+                parent.normalize();
+            });
+            findMatches = [];
+            findCurrentIndex = -1;
+        }
+
+        function findInPage(query) {
+            findClearHighlights();
+            if (!query || query.length === 0) return JSON.stringify({ total: 0, current: 0 });
+
+            var container = document.getElementById('content') || document.body;
+            var walker = document.createTreeWalker(container, NodeFilter.SHOW_TEXT, {
+                acceptNode: function(node) {
+                    var p = node.parentNode;
+                    if (p.tagName === 'SCRIPT' || p.tagName === 'STYLE') return NodeFilter.FILTER_REJECT;
+                    return NodeFilter.FILTER_ACCEPT;
+                }
+            }, false);
+
+            var textNodes = [];
+            var n;
+            while (n = walker.nextNode()) textNodes.push(n);
+
+            var lowerQuery = query.toLowerCase();
+            textNodes.forEach(function(textNode) {
+                var text = textNode.nodeValue;
+                var lowerText = text.toLowerCase();
+                var idx = lowerText.indexOf(lowerQuery);
+                if (idx === -1) return;
+
+                var matches = [];
+                while (idx !== -1) {
+                    matches.push({ start: idx, end: idx + lowerQuery.length });
+                    idx = lowerText.indexOf(lowerQuery, idx + 1);
+                }
+
+                var fragment = document.createDocumentFragment();
+                var lastIndex = 0;
+                matches.forEach(function(m) {
+                    if (m.start > lastIndex) fragment.appendChild(document.createTextNode(text.substring(lastIndex, m.start)));
+                    var mark = document.createElement('mark');
+                    mark.className = 'find-highlight';
+                    mark.style.cssText = 'background:#ffeb3b;color:#333;padding:0 2px;border-radius:2px;';
+                    mark.textContent = text.substring(m.start, m.end);
+                    fragment.appendChild(mark);
+                    findMatches.push(mark);
+                    lastIndex = m.end;
+                });
+                if (lastIndex < text.length) fragment.appendChild(document.createTextNode(text.substring(lastIndex)));
+                textNode.parentNode.replaceChild(fragment, textNode);
+            });
+
+            if (findMatches.length > 0) {
+                findCurrentIndex = 0;
+                findMatches[0].style.backgroundColor = '#ff9800';
+                findMatches[0].scrollIntoView({ behavior: 'smooth', block: 'center' });
+            }
+            return JSON.stringify({ total: findMatches.length, current: findCurrentIndex + 1 });
+        }
+
+        function findNext() {
+            if (findMatches.length === 0) return JSON.stringify({ total: 0, current: 0 });
+            findMatches[findCurrentIndex].style.backgroundColor = '#ffeb3b';
+            findCurrentIndex = (findCurrentIndex + 1) % findMatches.length;
+            findMatches[findCurrentIndex].style.backgroundColor = '#ff9800';
+            findMatches[findCurrentIndex].scrollIntoView({ behavior: 'smooth', block: 'center' });
+            return JSON.stringify({ total: findMatches.length, current: findCurrentIndex + 1 });
+        }
+
+        function findPrevious() {
+            if (findMatches.length === 0) return JSON.stringify({ total: 0, current: 0 });
+            findMatches[findCurrentIndex].style.backgroundColor = '#ffeb3b';
+            findCurrentIndex = (findCurrentIndex - 1 + findMatches.length) % findMatches.length;
+            findMatches[findCurrentIndex].style.backgroundColor = '#ff9800';
+            findMatches[findCurrentIndex].scrollIntoView({ behavior: 'smooth', block: 'center' });
+            return JSON.stringify({ total: findMatches.length, current: findCurrentIndex + 1 });
+        }
+
+        function findClear() {
+            findClearHighlights();
+            return JSON.stringify({ total: 0, current: 0 });
+        }
+
+        function getSelection() {
+            return window.getSelection().toString();
+        }
+
+        window.findInPage = findInPage;
+        window.findNext = findNext;
+        window.findPrevious = findPrevious;
+        window.findClear = findClear;
+        window.getSelection2 = getSelection;
+    })();
     """
 
     // MARK: - Search Highlight
@@ -480,7 +439,7 @@ enum PageScripts {
                 var searchTerms = searchQuery.toLowerCase().split(/\\s+/).filter(function(t) { return t.length >= 2; });
                 if (searchTerms.length === 0) return;
 
-                var container = document.querySelector('.container');
+                var container = document.getElementById('content');
                 if (!container) return;
 
                 var walker = document.createTreeWalker(container, NodeFilter.SHOW_TEXT, {

@@ -1,7 +1,7 @@
 import SwiftUI
 
 struct FileListView: View {
-    let project: Project
+    let directoryPath: String
     @Binding var selectedFile: FileEntry?
     @State private var searchText = ""
     @State private var sortMethod: SortMethod = .dateDesc
@@ -13,7 +13,7 @@ struct FileListView: View {
         VStack(spacing: 0) {
             // Header with project name and controls
             HStack {
-                Text(project.name)
+                Text((directoryPath as NSString).lastPathComponent)
                     .font(.headline)
                     .lineLimit(1)
                 Spacer()
@@ -75,7 +75,7 @@ struct FileListView: View {
         files = []
         isScanning = true
         let filter = fileFilter
-        let path = project.path
+        let path = directoryPath
         print("[ui] startScan for \(path)")
         let uiStart = CFAbsoluteTimeGetCurrent()
 

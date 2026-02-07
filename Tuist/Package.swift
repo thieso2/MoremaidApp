@@ -12,7 +12,6 @@ let packageSettings = PackageSettings(
 let package = Package(
     name: "Moremaid",
     dependencies: [
-        .package(url: "https://github.com/swhitty/FlyingFox", from: "0.26.2"),
         .package(url: "https://github.com/weichsel/ZIPFoundation", from: "0.9.19"),
     ]
 )

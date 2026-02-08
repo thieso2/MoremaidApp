@@ -113,18 +113,28 @@ jobs:
             sign "$item"
           done
 
-          # 3. Framework bundles
+          # 3. Standalone Mach-O executables inside frameworks (e.g. Sparkle's Autoupdate)
+          find "$APP_PATH/Contents/Frameworks" -type f -perm +111 \
+            ! -name '*.dylib' ! -path '*/MacOS/*' ! -path '*/Headers/*' \
+            ! -path '*/Modules/*' ! -path '*/_CodeSignature/*' ! -name '*.plist' \
+            ! -name '*.h' ! -name '*.modulemap' ! -name 'CodeResources' | while read -r item; do
+            if file "$item" | grep -q Mach-O; then
+              sign "$item"
+            fi
+          done
+
+          # 4. Framework bundles
           find "$APP_PATH" -name '*.framework' | while read -r item; do sign "$item"; done
 
-          # 4. App extensions
+          # 5. App extensions
           find "$APP_PATH" -name '*.appex' | while read -r item; do sign "$item"; done
 
-          # 5. CLI tool
+          # 6. CLI tool
           if [ -f "$APP_PATH/Contents/SharedSupport/bin/mm" ]; then
             sign "$APP_PATH/Contents/SharedSupport/bin/mm"
           fi
 
-          # 6. Main app bundle with entitlements
+          # 7. Main app bundle with entitlements
           sign "$APP_PATH" --entitlements "$ENTITLEMENTS"
 
           # Verify

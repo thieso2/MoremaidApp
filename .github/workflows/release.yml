@@ -197,6 +197,8 @@ jobs:
           ditto -c -k --keepParent "$APP_PATH" "$ZIP_NAME"
           echo "zip_name=$ZIP_NAME" >> "$GITHUB_OUTPUT"
           echo "sha256=$(shasum -a 256 "$ZIP_NAME" | cut -d ' ' -f 1)" >> "$GITHUB_OUTPUT"
+          BUILD_NUMBER=$(/usr/libexec/PlistBuddy -c "Print CFBundleVersion" "$APP_PATH/Contents/Info.plist")
+          echo "build_number=$BUILD_NUMBER" >> "$GITHUB_OUTPUT"
 
       - name: Sign update with Sparkle EdDSA
         if: steps.signing.outputs.available == 'true'
@@ -259,6 +261,7 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           VERSION="${{ steps.version.outputs.version }}"
+          BUILD_NUMBER="${{ steps.package.outputs.build_number }}"
           ZIP_NAME="${{ steps.package.outputs.zip_name }}"
           ED_SIG="${{ steps.sparkle_sign.outputs.ed_signature }}"
           ED_LEN="${{ steps.sparkle_sign.outputs.ed_length }}"
@@ -277,7 +280,7 @@ jobs:
           item = '''        <item>
               <title>Version ${VERSION}</title>
               <pubDate>${PUB_DATE}</pubDate>
-              <sparkle:version>${VERSION}</sparkle:version>
+              <sparkle:version>${BUILD_NUMBER}</sparkle:version>
               <sparkle:shortVersionString>${VERSION}</sparkle:shortVersionString>
               <sparkle:minimumSystemVersion>14.0</sparkle:minimumSystemVersion>
               <enclosure

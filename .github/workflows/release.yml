@@ -98,35 +98,34 @@ jobs:
         run: |
           APP_PATH=".derivedData/Build/Products/Release/$APP_NAME.app"
           IDENTITY="${{ steps.cert.outputs.cert_cn }}"
-          SIGN_FLAGS="--force --options runtime --timestamp --sign"
+
+          sign() {
+            echo "Signing: $1"
+            codesign --force --options runtime --timestamp --sign "$IDENTITY" "$@"
+          }
 
           # Sign everything inside-out: deepest nested items first
           # 1. All dylibs
-          find "$APP_PATH" -name '*.dylib' -print0 | xargs -0 -I{} codesign $SIGN_FLAGS "$IDENTITY" "{}"
+          find "$APP_PATH" -name '*.dylib' | while read -r item; do sign "$item"; done
 
-          # 2. All nested app/xpc/appex bundles (inside frameworks), sorted deepest-first
-          find "$APP_PATH/Contents/Frameworks" \( -name '*.app' -o -name '*.xpc' \) -print0 | \
-            xargs -0 -I{} codesign --deep $SIGN_FLAGS "$IDENTITY" "{}"
+          # 2. Nested bundles inside frameworks (XPC services, helper apps) — deepest first
+          find "$APP_PATH/Contents/Frameworks" \( -name '*.xpc' -o -name '*.app' \) | sort -r | while read -r item; do
+            sign "$item"
+          done
 
-          # 3. Standalone executables inside frameworks (e.g. Sparkle's Autoupdate)
-          find "$APP_PATH/Contents/Frameworks" -type f -perm +111 ! -name '*.dylib' ! -path '*/MacOS/*' ! -path '*/Headers/*' ! -path '*/Resources/*' ! -path '*/Modules/*' ! -name 'Info.plist' ! -name '*.h' ! -name 'module*' -print0 | \
-            xargs -0 -I{} sh -c 'file "{}" | grep -q Mach-O && codesign '"$SIGN_FLAGS"' "'"$IDENTITY"'" "{}" && echo "Signed: {}" || true'
+          # 3. Framework bundles
+          find "$APP_PATH" -name '*.framework' | while read -r item; do sign "$item"; done
 
-          # 4. Framework bundles
-          find "$APP_PATH" -name '*.framework' -print0 | xargs -0 -I{} codesign $SIGN_FLAGS "$IDENTITY" "{}"
+          # 4. App extensions
+          find "$APP_PATH" -name '*.appex' | while read -r item; do sign "$item"; done
 
-          # 5. App extensions
-          find "$APP_PATH/Contents/PlugIns" -name '*.appex' -print0 2>/dev/null | xargs -0 -I{} codesign $SIGN_FLAGS "$IDENTITY" "{}"
-
-          # 6. CLI tool
+          # 5. CLI tool
           if [ -f "$APP_PATH/Contents/SharedSupport/bin/mm" ]; then
-            codesign $SIGN_FLAGS "$IDENTITY" "$APP_PATH/Contents/SharedSupport/bin/mm"
+            sign "$APP_PATH/Contents/SharedSupport/bin/mm"
           fi
 
-          # 7. Main app bundle with entitlements
-          codesign $SIGN_FLAGS "$IDENTITY" \
-            --entitlements "$ENTITLEMENTS" \
-            "$APP_PATH"
+          # 6. Main app bundle with entitlements
+          sign "$APP_PATH" --entitlements "$ENTITLEMENTS"
 
           # Verify
           codesign --verify --deep --strict "$APP_PATH"

@@ -68,36 +68,37 @@ jobs:
 
       - name: Verify certificate
         if: steps.signing.outputs.available == 'true'
+        id: cert
         run: |
           echo "=== Keychains ==="
           security list-keychains -d user
           echo "=== Valid signing identities ==="
           security find-identity -v -p codesigning
-          echo "=== All identities ==="
-          security find-identity -v
+          CERT_SHA=$(security find-identity -v -p codesigning | head -1 | awk '{print $2}')
+          CERT_CN=$(security find-identity -v -p codesigning | head -1 | sed 's/.*"\(.*\)"/\1/')
+          echo "cert_sha=$CERT_SHA" >> "$GITHUB_OUTPUT"
+          echo "cert_cn=$CERT_CN" >> "$GITHUB_OUTPUT"
+          echo "Using certificate: $CERT_CN ($CERT_SHA)"
 
       - name: Build (Release, signed)
         if: steps.signing.outputs.available == 'true'
-        env:
-          DEVELOPER_ID: ${{ secrets.APPLE_DEVELOPER_ID }}
         run: |
           tuist xcodebuild -workspace "$WORKSPACE" \
             -scheme "$SCHEME" \
             -configuration Release \
             -destination 'platform=macOS' \
             -derivedDataPath .derivedData \
-            CODE_SIGN_IDENTITY="Developer ID Application: $DEVELOPER_ID" \
+            CODE_SIGN_IDENTITY="${{ steps.cert.outputs.cert_cn }}" \
             CODE_SIGN_STYLE=Manual \
+            DEVELOPMENT_TEAM= \
             build
 
       - name: Re-sign with entitlements
         if: steps.signing.outputs.available == 'true'
-        env:
-          DEVELOPER_ID: ${{ secrets.APPLE_DEVELOPER_ID }}
         run: |
           APP_PATH=".derivedData/Build/Products/Release/$APP_NAME.app"
           codesign --force --options runtime \
-            --sign "Developer ID Application: $DEVELOPER_ID" \
+            --sign "${{ steps.cert.outputs.cert_cn }}" \
             --entitlements "$ENTITLEMENTS" \
             "$APP_PATH"
 

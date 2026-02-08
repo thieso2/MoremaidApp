@@ -2,7 +2,6 @@ import SwiftUI
 
 struct SingleFileView: View {
     let filePath: String
-    let sessionID: UUID
     @Environment(AppState.self) private var appState
     @Environment(\.openWindow) private var openWindow
     @State private var webViewStore = WebViewStore()
@@ -240,7 +239,7 @@ struct SingleFileView: View {
         )
 
         webViewStore.load(file: entry, baseDirectory: baseDirectory)
-        appState.registerSession(id: sessionID, target: .file(path: filePath), selectedFile: filePath)
+        appState.trackRecentTarget(.file(path: filePath))
     }
 
     private func handleSettingsChanged() {

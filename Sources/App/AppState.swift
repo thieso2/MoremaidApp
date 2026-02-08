@@ -1,23 +1,18 @@
 import Foundation
 import SwiftUI
 
-struct WindowSession: Codable {
+struct PendingTab {
     let target: OpenTarget
     let selectedFile: String?
-    var frameX: Double?
-    var frameY: Double?
-    var frameWidth: Double?
-    var frameHeight: Double?
 }
 
 @Observable
 @MainActor
 final class AppState {
-    private(set) var pendingSessions: [WindowSession] = []
+    /// Queue for new tabs (from queueNewTab)
+    private(set) var pendingTabs: [PendingTab] = []
     /// Queue for targets from Cmd+O or drag-drop that need new windows
     var pendingTargets: [OpenTarget] = []
-    /// Tracks currently open window sessions for saving on quit
-    var openSessions: [UUID: WindowSession] = [:]
     /// The target of the key (front) window
     var activeTarget: OpenTarget?
     /// Atomic counter for windows that need opening (used by notification handler)
@@ -25,35 +20,17 @@ final class AppState {
     /// Recently opened targets (most recent first), persisted via UserDefaults
     private(set) var recentTargets: [OpenTarget] = []
     private static let maxRecent = 10
-    private var isTerminating = false
-
-    private var restoreWindows: Bool {
-        UserDefaults.standard.object(forKey: "restoreWindows") as? Bool ?? true
-    }
 
     init() {
         print("[AppState] init")
-        loadSavedSessions()
-        print("[AppState] loaded \(pendingSessions.count) saved sessions, restoreWindows=\(restoreWindows)")
-        for (i, s) in pendingSessions.enumerated() {
-            print("[AppState]   session[\(i)]: \(s.target.path)")
-        }
         loadRecentTargets()
-        NotificationCenter.default.addObserver(
-            forName: NSApplication.willTerminateNotification,
-            object: nil, queue: .main
-        ) { _ in
-            MainActor.assumeIsolated {
-                self.isTerminating = true
-            }
-        }
     }
 
-    // MARK: - Session Management
+    // MARK: - Tab Queue
 
-    func claimPendingSession() -> WindowSession? {
-        guard !pendingSessions.isEmpty else { return nil }
-        return pendingSessions.removeFirst()
+    func claimPendingTab() -> PendingTab? {
+        guard !pendingTabs.isEmpty else { return nil }
+        return pendingTabs.removeFirst()
     }
 
     func claimPendingTarget() -> OpenTarget? {
@@ -61,55 +38,14 @@ final class AppState {
         return pendingTargets.removeFirst()
     }
 
-    var pendingSessionCount: Int { pendingSessions.count }
+    var pendingTabCount: Int { pendingTabs.count }
 
     func queueNewTab(target: OpenTarget, selectedFile: String?) {
-        pendingSessions.append(WindowSession(target: target, selectedFile: selectedFile))
+        pendingTabs.append(PendingTab(target: target, selectedFile: selectedFile))
     }
 
-    func registerSession(id: UUID, target: OpenTarget, selectedFile: String?, frame: NSRect? = nil) {
-        var session = WindowSession(target: target, selectedFile: selectedFile)
-        if let frame {
-            session.frameX = frame.origin.x
-            session.frameY = frame.origin.y
-            session.frameWidth = frame.size.width
-            session.frameHeight = frame.size.height
-        } else if let existing = openSessions[id] {
-            session.frameX = existing.frameX
-            session.frameY = existing.frameY
-            session.frameWidth = existing.frameWidth
-            session.frameHeight = existing.frameHeight
-        }
-        openSessions[id] = session
-        saveSessions()
+    func trackRecentTarget(_ target: OpenTarget) {
         addRecentTarget(target)
-    }
-
-    func unregisterSession(id: UUID) {
-        guard !isTerminating else { return }
-        openSessions.removeValue(forKey: id)
-        saveSessions()
-    }
-
-    // MARK: - Persistence
-
-    private func loadSavedSessions() {
-        guard restoreWindows,
-              let data = UserDefaults.standard.data(forKey: "savedWindowSessions"),
-              let sessions = try? JSONDecoder().decode([WindowSession].self, from: data) else {
-            return
-        }
-        // Filter out sessions whose paths no longer exist on disk
-        pendingSessions = sessions.filter { session in
-            FileManager.default.fileExists(atPath: session.target.path)
-        }
-    }
-
-    func saveSessions() {
-        let sessions = Array(openSessions.values)
-        if let data = try? JSONEncoder().encode(sessions) {
-            UserDefaults.standard.set(data, forKey: "savedWindowSessions")
-        }
     }
 
     // MARK: - Recent Targets

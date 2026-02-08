@@ -2,7 +2,6 @@ import SwiftUI
 
 struct DirectoryWindowView: View {
     let directoryPath: String
-    let sessionID: UUID
     let initialFilePath: String?
     @Environment(AppState.self) private var appState
     @Environment(\.openWindow) private var openWindow
@@ -692,12 +691,11 @@ struct DirectoryWindowView: View {
     private func handleFileChange() {
         guard let file = selectedFile else { return }
         activityStore.markSeenByPath(file.absolutePath)
-        let savedPath = isAutoIndex(file) ? nil : file.absolutePath
 
         if isNavigatingHistory {
             isNavigatingHistory = false
             loadFileOrAutoIndex(file)
-            appState.registerSession(id: sessionID, target: .directory(path: directoryPath), selectedFile: savedPath)
+            appState.trackRecentTarget(.directory(path: directoryPath))
         } else {
             Task {
                 if historyIndex >= 0 {
@@ -706,7 +704,7 @@ struct DirectoryWindowView: View {
                 pushToHistory(file)
                 webViewStore.pendingScrollY = 0
                 loadFileOrAutoIndex(file)
-                appState.registerSession(id: sessionID, target: .directory(path: directoryPath), selectedFile: savedPath)
+                appState.trackRecentTarget(.directory(path: directoryPath))
             }
         }
 
@@ -903,20 +901,16 @@ struct DirectoryWindowView: View {
                 if done {
                     isScanning = false
                     activityStore.seedKnownPaths(projectFiles)
-                    if selectedFile == nil {
-                        appState.registerSession(id: sessionID, target: .directory(path: directoryPath), selectedFile: nil)
-                    }
                 }
             }
         }
     }
 
-    /// Try to load the saved file or a default file immediately (before scan completes).
+    /// Try to load the initial file immediately (before scan completes).
     private func tryLoadInitialFile() {
-        // 1. Try the saved file from last session
+        // 1. Try the file passed from the tab
         if let path = initialFilePath, FileManager.default.fileExists(atPath: path) {
             selectedFile = makeFileEntry(absolutePath: path)
-            appState.registerSession(id: sessionID, target: .directory(path: directoryPath), selectedFile: path)
             return
         }
 
@@ -927,7 +921,6 @@ struct DirectoryWindowView: View {
                     let fullPath = (directoryPath as NSString).appendingPathComponent(match)
                     guard FileManager.default.fileExists(atPath: fullPath) else { continue }
                     selectedFile = makeFileEntry(absolutePath: fullPath)
-                    appState.registerSession(id: sessionID, target: .directory(path: directoryPath), selectedFile: fullPath)
                     return
                 }
             }

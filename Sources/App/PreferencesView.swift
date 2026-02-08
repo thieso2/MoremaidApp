@@ -11,7 +11,6 @@ struct PreferencesView: View {
     @AppStorage("defaultTypography") private var defaultTypography = Constants.defaultTypography
     @AppStorage("defaultZoom") private var defaultZoom = Constants.zoomDefault
     @AppStorage("autoReload") private var autoReload = true
-    @AppStorage("restoreWindows") private var restoreWindows = true
     @State private var launchAtLogin = SMAppService.mainApp.status == .enabled
     @State private var cliStatus = CLIInstaller.checkStatus()
     @State private var cliError: String?
@@ -42,8 +41,6 @@ struct PreferencesView: View {
                 .onChange(of: autoReload) {
                     notifySettingsChanged()
                 }
-
-            Toggle("Restore windows on launch", isOn: $restoreWindows)
 
             Toggle("Launch at Login", isOn: $launchAtLogin)
                 .onChange(of: launchAtLogin) { _, newValue in

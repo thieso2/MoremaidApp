@@ -66,16 +66,14 @@ struct MoremaidApp: App {
     }
 }
 
-/// Each window instance claims a session or pending target.
+/// Each window instance claims a pending tab or target.
 struct WindowRootView: View {
     @Environment(AppState.self) private var appState
     @Environment(\.openWindow) private var openWindow
     @Environment(\.dismiss) private var dismiss
     @Environment(\.controlActiveState) private var controlActiveState
-    @State private var sessionID = UUID()
     @State private var target: OpenTarget?
     @State private var initialFilePath: String?
-    @State private var initialFrame: NSRect?
     @State private var didSetup = false
     @State private var windowReady = false
 
@@ -85,11 +83,10 @@ struct WindowRootView: View {
         Group {
             switch target {
             case .file(let path):
-                SingleFileView(filePath: path, sessionID: sessionID)
+                SingleFileView(filePath: path)
             case .directory(let path):
                 DirectoryWindowView(
                     directoryPath: path,
-                    sessionID: sessionID,
                     initialFilePath: initialFilePath
                 )
             case nil:
@@ -97,32 +94,19 @@ struct WindowRootView: View {
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
             }
         }
-        .background(WindowFrameTracker(
-            sessionID: sessionID,
-            initialFrame: initialFrame,
-            appState: appState,
-            isReady: windowReady
-        ))
-        .onAppear {
-            print("[WindowRootView] onAppear sessionID=\(sessionID)")
-        }
+        .background(WindowFlickerGuard(isReady: windowReady))
         .task {
             guard !didSetup else { return }
             didSetup = true
-            print("[WindowRootView] .task running sessionID=\(sessionID)")
-            print("[WindowRootView]   pendingSessions=\(appState.pendingSessionCount) pendingTargets=\(appState.pendingTargets.count)")
+            print("[WindowRootView] .task pendingTabs=\(appState.pendingTabCount) pendingTargets=\(appState.pendingTargets.count)")
 
-            if let session = appState.claimPendingSession() {
-                print("[WindowRootView]   claimed session: \(session.target.path)")
-                target = session.target
-                initialFilePath = session.selectedFile
-                if let x = session.frameX, let y = session.frameY,
-                   let w = session.frameWidth, let h = session.frameHeight {
-                    initialFrame = NSRect(x: x, y: y, width: w, height: h)
-                }
+            if let tab = appState.claimPendingTab() {
+                print("[WindowRootView]   claimed tab: \(tab.target.path)")
+                target = tab.target
+                initialFilePath = tab.selectedFile
                 windowReady = true
-                // Open windows for remaining pending sessions
-                let remaining = appState.pendingSessionCount
+                // Open windows for remaining pending tabs
+                let remaining = appState.pendingTabCount
                 for _ in 0..<remaining {
                     openWindow(id: "main")
                 }
@@ -137,8 +121,6 @@ struct WindowRootView: View {
                 }
             } else {
                 print("[WindowRootView]   nothing to claim — dismissing")
-                // No session or target to claim — close this empty window
-                // Window was never made visible (alphaValue=0), so no flicker
                 dismiss()
             }
         }
@@ -147,11 +129,7 @@ struct WindowRootView: View {
                 appState.activeTarget = target
             }
         }
-        .onDisappear {
-            appState.unregisterSession(id: sessionID)
-        }
         .onReceive(NotificationCenter.default.publisher(for: .openPendingTargets)) { _ in
-            // Use atomic counter to ensure only one window handles each request
             guard appState.windowsToOpen > 0 else { return }
             let count = appState.windowsToOpen
             appState.windowsToOpen = 0
@@ -162,85 +140,28 @@ struct WindowRootView: View {
     }
 }
 
-/// NSViewRepresentable that accesses the hosting NSWindow to restore frame and periodically save it.
-struct WindowFrameTracker: NSViewRepresentable {
-    let sessionID: UUID
-    let initialFrame: NSRect?
-    let appState: AppState
+/// Hides the window (alpha=0) until content is ready, preventing flicker.
+struct WindowFlickerGuard: NSViewRepresentable {
     var isReady: Bool
 
-    func makeNSView(context: Context) -> WindowTrackerView {
-        print("[WindowFrameTracker] makeNSView sessionID=\(sessionID)")
-        let view = WindowTrackerView()
-        view.coordinator = context.coordinator
-        context.coordinator.sessionID = sessionID
-        context.coordinator.initialFrame = initialFrame
-        context.coordinator.appState = appState
-        return view
+    func makeNSView(context: Context) -> FlickerGuardView {
+        FlickerGuardView()
     }
 
-    func updateNSView(_ nsView: WindowTrackerView, context: Context) {
-        print("[WindowFrameTracker] updateNSView isReady=\(isReady) didRestore=\(context.coordinator.didRestore)")
-
-        // Reveal window once content is ready
+    func updateNSView(_ nsView: FlickerGuardView, context: Context) {
         if isReady, let window = nsView.window, window.alphaValue == 0 {
-            print("[WindowFrameTracker]   revealing window (alpha=1)")
             window.alphaValue = 1
         }
     }
 
-    /// Custom NSView that hides its window immediately when attached, before it renders.
-    class WindowTrackerView: NSView {
-        var coordinator: Coordinator?
+    class FlickerGuardView: NSView {
+        private var didHide = false
 
         override func viewDidMoveToWindow() {
             super.viewDidMoveToWindow()
-            guard let window, let coordinator, !coordinator.didRestore else { return }
-            coordinator.didRestore = true
-            print("[WindowTrackerView] viewDidMoveToWindow — hiding window (alpha=0), visible=\(window.isVisible) alpha=\(window.alphaValue)")
+            guard let window, !didHide else { return }
+            didHide = true
             window.alphaValue = 0
-            if let frame = coordinator.initialFrame {
-                window.setFrame(frame, display: true)
-            }
-            coordinator.window = window
-            coordinator.startTracking()
-        }
-    }
-
-    func makeCoordinator() -> Coordinator { Coordinator() }
-
-    @MainActor
-    class Coordinator {
-        var sessionID = UUID()
-        var initialFrame: NSRect?
-        var appState: AppState?
-        var window: NSWindow?
-        var didRestore = false
-        private var timer: Timer?
-
-        func startTracking() {
-            timer = Timer.scheduledTimer(withTimeInterval: 2.0, repeats: true) { [weak self] _ in
-                Task { @MainActor in
-                    self?.saveFrame()
-                }
-            }
-        }
-
-        private func saveFrame() {
-            guard let window, let appState else { return }
-            let frame = window.frame
-            if var session = appState.openSessions[sessionID] {
-                session.frameX = frame.origin.x
-                session.frameY = frame.origin.y
-                session.frameWidth = frame.size.width
-                session.frameHeight = frame.size.height
-                appState.openSessions[sessionID] = session
-                appState.saveSessions()
-            }
-        }
-
-        nonisolated deinit {
-            // Timer cleanup handled when view is removed
         }
     }
 }

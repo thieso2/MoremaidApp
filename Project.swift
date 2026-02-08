@@ -92,12 +92,14 @@ let project = Project(
                 "NSExtension": .dictionary([
                     "NSExtensionPointIdentifier": "com.apple.quicklook.preview",
                     "NSExtensionPrincipalClass": "$(PRODUCT_MODULE_NAME).PreviewProvider",
+                    "NSExtensionAttributes": .dictionary([
+                        "QLSupportedContentTypes": .array([
+                            "net.daringfireball.markdown",
+                        ]),
+                        "QLSupportsSearchableItems": false,
+                        "QLIsDataBasedPreview": true,
+                    ]),
                 ]),
-                "QLSupportedContentTypes": .array([
-                    "net.daringfireball.markdown",
-                    "public.plain-text",
-                ]),
-                "QLSupportsSearchableItems": true,
             ]),
             sources: ["QuickLook/**"],
             resources: ["QuickLook/Resources/**"],
@@ -106,6 +108,7 @@ let project = Project(
                 base: [
                     "SWIFT_VERSION": "6.0",
                     "SWIFT_STRICT_CONCURRENCY": "complete",
+                    "CODE_SIGN_ENTITLEMENTS": "MoremaidQuickLook.entitlements",
                     "CODE_SIGN_STYLE": "Automatic",
                     "DEVELOPMENT_TEAM": "6629AD7A87",
                 ]

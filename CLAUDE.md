@@ -8,12 +8,11 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ```bash
 mise build          # Build the app
-mise run            # Build and run in background (checks port 13277)
+mise run            # Build and run in background
 mise debug          # Build and run in foreground (see stdout)
 mise clean-build    # Wipe .derivedData and rebuild from scratch
 mise test           # Run unit tests
 mise generate       # Regenerate Xcode project (after changing Project.swift)
-mise check-port     # Check what's using port 13277
 mise dist           # Copy built .app to .build/
 ```
 
@@ -84,7 +83,6 @@ SwiftUI `WindowGroup(id: "main")` creates windows. Each `WindowRootView` instanc
 
 ## Gotchas
 
-- **Port 13277 conflict:** The Node.js `mm` CLI (parent project) uses the same port. Always `mise check-port` or `lsof -i :13277` before testing.
 - **macOS Tahoe toolbar placements:** Only `.navigation` renders by default. Use `.toolbarRole(.editor)` on the view for `.primaryAction`/`.secondaryAction` items to appear.
 - **SwiftUI MenuBarExtra:** `.task` on MenuBarExtra content only triggers when the menu is opened, not at app launch.
 - **Do NOT use `open` command** to launch the built app — macOS LaunchServices caches old binaries. Use `mise run` or `mise debug` instead.

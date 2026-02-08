@@ -1,10 +1,6 @@
 import Foundation
 
 enum Constants {
-    // MARK: - Server
-    static let serverPort: UInt16 = 13277
-    static let maxPortAttempts = 10
-
     // MARK: - Timeouts & Intervals
     static let inactivityTimeout: TimeInterval = 10.0
     static let wsReconnectDelay: TimeInterval = 0.5

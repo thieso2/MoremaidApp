@@ -5,7 +5,6 @@ workspace = "Moremaid.xcworkspace"
 destination = "platform=macOS"
 derived_data = ".derivedData"
 app_bundle = "Moremaid.app"
-port = "13277"
 
 [tasks.generate]
 description = "Generate Xcode project from Tuist"
@@ -62,13 +61,7 @@ fi
 
 echo "Launching $APP"
 "$APP" &
-sleep 2
-
-if lsof -i :{{vars.port}} -P | grep -q {{vars.app_name}}; then
-  echo "Server running on port {{vars.port}}"
-else
-  echo "Warning: server not bound to port {{vars.port}}"
-fi
+echo "{{vars.app_name}} launched"
 """
 
 [tasks.stop]
@@ -85,12 +78,7 @@ depends = ["stop", "build"]
 run = """
 APP=$(find {{vars.derived_data}} -path "*/Debug/{{vars.app_bundle}}/Contents/MacOS/{{vars.app_name}}" -type f 2>/dev/null | head -1)
 "$APP" &
-sleep 2
-if lsof -i :{{vars.port}} -P | grep -q {{vars.app_name}}; then
-  echo "Server running on port {{vars.port}}"
-else
-  echo "Warning: server not bound to port {{vars.port}}"
-fi
+echo "{{vars.app_name}} launched"
 """
 
 [tasks.test]
@@ -103,10 +91,6 @@ tuist xcodebuild -workspace {{vars.workspace}} \
   -derivedDataPath {{vars.derived_data}} \
   test 2>&1 | grep -E '(Test Suite|Test Case|Executed|FAILED|PASSED|BUILD)' | tail -20
 """
-
-[tasks.check-port]
-description = "Check what's listening on the server port"
-run = "lsof -i :{{vars.port}} -P || echo 'Port {{vars.port}} is free'"
 
 [tasks.log]
 description = "Tail the debug log"

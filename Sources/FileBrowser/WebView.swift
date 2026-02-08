@@ -99,7 +99,8 @@ class WebViewStore {
             )
         }
 
-        let baseURL = URL(fileURLWithPath: baseDirectory, isDirectory: true)
+        let fileDir = (file.absolutePath as NSString).deletingLastPathComponent
+        let baseURL = URL(fileURLWithPath: fileDir, isDirectory: true)
         webView?.loadHTMLString(html, baseURL: baseURL)
         applyZoom(zoom)
     }

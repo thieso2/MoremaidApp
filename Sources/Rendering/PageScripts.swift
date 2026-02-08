@@ -447,10 +447,22 @@ enum PageScripts {
             return window.getSelection().toString();
         }
 
+        function findJumpToIndex(idx) {
+            if (findMatches.length === 0 || idx < 0 || idx >= findMatches.length) return JSON.stringify({ total: findMatches.length, current: 0 });
+            if (findCurrentIndex >= 0 && findCurrentIndex < findMatches.length) {
+                findMatches[findCurrentIndex].style.backgroundColor = '#ffeb3b';
+            }
+            findCurrentIndex = idx;
+            findMatches[findCurrentIndex].style.backgroundColor = '#ff9800';
+            findMatches[findCurrentIndex].scrollIntoView({ behavior: 'smooth', block: 'center' });
+            return JSON.stringify({ total: findMatches.length, current: findCurrentIndex + 1 });
+        }
+
         window.findInPage = findInPage;
         window.findNext = findNext;
         window.findPrevious = findPrevious;
         window.findClear = findClear;
+        window.findJumpToIndex = findJumpToIndex;
         window.getSelection2 = getSelection;
     })();
     """

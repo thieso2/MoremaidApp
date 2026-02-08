@@ -19,6 +19,11 @@ struct DirectoryWindowView: View {
     @State private var findTotal = 0
     @FocusState private var findFieldFocused: Bool
     @State private var showTOC = false
+    @State private var showSearchPanel = false
+    @State private var searchInFilesQuery = ""
+    @State private var searchInFilesResults: [SearchResult] = []
+    @State private var sifFileIndex = -1
+    @State private var sifMatchIndex = -1
     @State private var headings: [WebViewStore.HeadingEntry] = []
     @State private var currentHeadingID = ""
     @State private var tocScrollTimer: Timer?
@@ -103,8 +108,38 @@ struct DirectoryWindowView: View {
                 .overlay(alignment: .top) { findBarOverlay }
                 .safeAreaInset(edge: .top, spacing: 0) { breadcrumbBar }
                 .safeAreaInset(edge: .bottom, spacing: 0) { statusBar }
+            if showSearchPanel {
+                Divider()
+                SearchInFilesView(
+                    files: projectFiles,
+                    searchQuery: $searchInFilesQuery,
+                    isPresented: $showSearchPanel,
+                    searchResults: $searchInFilesResults,
+                    activeFileIndex: $sifFileIndex,
+                    activeMatchIndex: $sifMatchIndex,
+                    onSelectResult: { file, query, lineNumber, matchIndex in
+                        handleSearchInFilesSelect(file: file, query: query, matchIndex: matchIndex)
+                    },
+                    onNext: { handleSearchInFilesNext() },
+                    onPrevious: { handleSearchInFilesPrevious() },
+                    onFirst: {
+                        guard !searchInFilesResults.isEmpty else { return }
+                        sifFileIndex = 0
+                        sifMatchIndex = 0
+                        navigateToSifMatch()
+                    }
+                )
+                .transition(.move(edge: .trailing).combined(with: .opacity))
+            }
         }
         .onChange(of: selectedFile) { handleFileChange() }
+        .onChange(of: showSearchPanel) {
+            if !showSearchPanel {
+                webViewStore.findClear()
+                sifFileIndex = -1
+                sifMatchIndex = -1
+            }
+        }
     }
 
     private var webViewLayer: some View {
@@ -164,6 +199,10 @@ struct DirectoryWindowView: View {
             .onReceive(NotificationCenter.default.publisher(for: .toggleStatusBar)) { _ in
                 guard isKeyWindow else { return }
                 withAnimation(.easeInOut(duration: 0.2)) { showStatusBar.toggle() }
+            }
+            .onReceive(NotificationCenter.default.publisher(for: .searchInFiles)) { _ in
+                guard isKeyWindow else { return }
+                withAnimation(.easeInOut(duration: 0.2)) { showSearchPanel.toggle() }
             }
     }
 
@@ -469,6 +508,16 @@ struct DirectoryWindowView: View {
             }
             .help("Toggle Table of Contents (\u{21E7}\u{2318}T)")
         }
+
+        ToolbarItem(placement: .primaryAction) {
+            Button {
+                withAnimation(.easeInOut(duration: 0.2)) { showSearchPanel.toggle() }
+            } label: {
+                Label("Find in Files", systemImage: "doc.text.magnifyingglass")
+            }
+            .help("Find in Files (\u{21E7}\u{2318}F)")
+        }
+
     }
 
     // MARK: - History Navigation
@@ -636,6 +685,10 @@ struct DirectoryWindowView: View {
     }
 
     private func handleFindNext() {
+        if showSearchPanel && !searchInFilesResults.isEmpty {
+            handleSearchInFilesNext()
+            return
+        }
         guard showFindBar else { return }
         Task {
             let r = await webViewStore.findNext()
@@ -645,6 +698,10 @@ struct DirectoryWindowView: View {
     }
 
     private func handleFindPrevious() {
+        if showSearchPanel && !searchInFilesResults.isEmpty {
+            handleSearchInFilesPrevious()
+            return
+        }
         guard showFindBar else { return }
         Task {
             let r = await webViewStore.findPrevious()
@@ -679,6 +736,68 @@ struct DirectoryWindowView: View {
         findCurrent = 0
         findTotal = 0
         webViewStore.becomeFirstResponder()
+    }
+
+    // MARK: - Search in Files Navigation
+
+    /// Called when user clicks a match in the search-in-files panel.
+    private func handleSearchInFilesSelect(file: FileEntry, query: String, matchIndex: Int) {
+        guard let fileIdx = searchInFilesResults.firstIndex(where: { $0.path == file.relativePath }) else { return }
+        sifFileIndex = fileIdx
+        sifMatchIndex = matchIndex
+        navigateToSifMatch()
+    }
+
+    /// Cmd+G in search-in-files mode. Wraps around.
+    private func handleSearchInFilesNext() {
+        guard !searchInFilesResults.isEmpty else { return }
+        let fileIdx = max(0, sifFileIndex)
+        let fileResult = searchInFilesResults[fileIdx]
+        let matchCount = fileResult.matches?.count ?? 0
+
+        if sifMatchIndex + 1 < matchCount {
+            sifMatchIndex += 1
+        } else {
+            sifFileIndex = (fileIdx + 1) % searchInFilesResults.count
+            sifMatchIndex = 0
+        }
+        navigateToSifMatch()
+    }
+
+    /// Shift+Cmd+G in search-in-files mode. Wraps around.
+    private func handleSearchInFilesPrevious() {
+        guard !searchInFilesResults.isEmpty else { return }
+
+        if sifMatchIndex > 0 {
+            sifMatchIndex -= 1
+        } else {
+            sifFileIndex = (sifFileIndex - 1 + searchInFilesResults.count) % searchInFilesResults.count
+            let prevResult = searchInFilesResults[sifFileIndex]
+            sifMatchIndex = max(0, (prevResult.matches?.count ?? 1) - 1)
+        }
+        navigateToSifMatch()
+    }
+
+    /// Navigate the webview to the current sifFileIndex/sifMatchIndex and highlight.
+    private func navigateToSifMatch() {
+        guard sifFileIndex >= 0, sifFileIndex < searchInFilesResults.count else { return }
+        let result = searchInFilesResults[sifFileIndex]
+        guard let file = projectFiles.first(where: { $0.relativePath == result.path }) else { return }
+
+        let needsNavigation = selectedFile != file
+        if needsNavigation {
+            selectedFile = file
+        }
+
+        let matchIndex = sifMatchIndex
+        let query = searchInFilesQuery
+        let delay: Double = needsNavigation ? 0.5 : 0.05
+        DispatchQueue.main.asyncAfter(deadline: .now() + delay) {
+            Task {
+                _ = await webViewStore.findInPage(query)
+                _ = await webViewStore.findJumpToIndex(matchIndex)
+            }
+        }
     }
 
     // MARK: - File Loading

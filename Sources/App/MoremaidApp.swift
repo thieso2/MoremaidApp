@@ -287,6 +287,13 @@ struct AppCommands: Commands {
             .keyboardShortcut("f", modifiers: .command)
 
             Button {
+                NotificationCenter.default.post(name: .searchInFiles, object: nil)
+            } label: {
+                Label("Find in Files...", systemImage: "doc.text.magnifyingglass")
+            }
+            .keyboardShortcut("f", modifiers: [.command, .shift])
+
+            Button {
                 NotificationCenter.default.post(name: .findNext, object: nil)
             } label: {
                 Label("Find Next", systemImage: "chevron.down")

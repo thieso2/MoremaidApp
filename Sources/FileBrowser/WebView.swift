@@ -296,6 +296,10 @@ class WebViewStore {
         await evalFindResult("window.findPrevious();")
     }
 
+    func findJumpToIndex(_ index: Int) async -> (current: Int, total: Int) {
+        await evalFindResult("window.findJumpToIndex(\(index));")
+    }
+
     private func evalFindResult(_ js: String) async -> (current: Int, total: Int) {
         guard let webView else { return (0, 0) }
         do {

@@ -26,6 +26,13 @@ enum Constants {
     static let searchFuzzy = 0.2
     static let searchMinTerm = 2
 
+    // MARK: - Search in Files
+    static let searchInFilesMaxMatches = 20
+    static let searchInFilesDebounce: TimeInterval = 0.3
+    static let searchPanelMinWidth: CGFloat = 250
+    static let searchPanelMaxWidth: CGFloat = 500
+    static let searchPanelDefaultWidth: CGFloat = 320
+
     // MARK: - Archive
     static let lruCacheSize = 100 * 1024 * 1024 // 100 MB
     static let archiveExtension = ".moremaid"

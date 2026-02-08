@@ -113,6 +113,13 @@ Moremaid is built on top of excellent open-source projects:
 
 ## Installation
 
+### Homebrew
+
+```bash
+brew tap thieso2/tap
+brew install --cask moremaidapp
+```
+
 ### From source
 
 Requires [Tuist](https://tuist.io) and [mise](https://mise.jdx.dev):

@@ -3,7 +3,7 @@ app_name = "Moremaid"
 scheme = "Moremaid"
 workspace = "Moremaid.xcworkspace"
 destination = "platform=macOS"
-derived_data = "~/Library/Developer/Xcode/DerivedData"
+derived_data = ".derivedData"
 app_bundle = "Moremaid.app"
 port = "13277"
 
@@ -13,18 +13,23 @@ run = "tuist generate --no-open"
 
 [tasks.build]
 description = "Build the app"
-depends = ["generate"]
 run = """
-xcodebuild -workspace {{vars.workspace}} \
+tuist xcodebuild -workspace {{vars.workspace}} \
   -scheme {{vars.scheme}} \
   -destination '{{vars.destination}}' \
-  build 2>&1 | tail -5
+  -derivedDataPath {{vars.derived_data}} \
+  build
 """
+
+[tasks.debug]
+description = "Build and run the app in the foreground"
+depends = ["build"]
+run = "{{vars.derived_data}}/Build/Products/Debug/{{vars.app_bundle}}/Contents/MacOS/{{vars.app_name}}"
 
 [tasks.clean]
 description = "Clean build and DerivedData"
 run = """
-rm -rf {{vars.derived_data}}/{{vars.app_name}}-*
+rm -rf {{vars.derived_data}}
 echo "DerivedData cleaned"
 """
 
@@ -32,9 +37,10 @@ echo "DerivedData cleaned"
 description = "Clean DerivedData and rebuild from scratch"
 depends = ["clean", "generate"]
 run = """
-xcodebuild -workspace {{vars.workspace}} \
+tuist xcodebuild -workspace {{vars.workspace}} \
   -scheme {{vars.scheme}} \
   -destination '{{vars.destination}}' \
+  -derivedDataPath {{vars.derived_data}} \
   build 2>&1 | tail -5
 """
 
@@ -91,9 +97,10 @@ fi
 description = "Run unit tests"
 depends = ["generate"]
 run = """
-xcodebuild -workspace {{vars.workspace}} \
+tuist xcodebuild -workspace {{vars.workspace}} \
   -scheme {{vars.scheme}} \
   -destination '{{vars.destination}}' \
+  -derivedDataPath {{vars.derived_data}} \
   test 2>&1 | grep -E '(Test Suite|Test Case|Executed|FAILED|PASSED|BUILD)' | tail -20
 """
 

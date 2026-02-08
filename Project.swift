@@ -7,7 +7,7 @@ let project = Project(
             name: "Moremaid",
             destinations: .macOS,
             product: .app,
-            bundleId: "com.moremaid.app",
+            bundleId: "de.tmp8.moremaid",
             deploymentTargets: .macOS("26.0"),
             infoPlist: .extendingDefault(with: [
                 "CFBundleDisplayName": "Moremaid",
@@ -42,15 +42,42 @@ let project = Project(
             ]),
             sources: ["Sources/**"],
             resources: ["Resources/**"],
+            scripts: [
+                .post(
+                    script: """
+                    mkdir -p "${BUILT_PRODUCTS_DIR}/Moremaid.app/Contents/SharedSupport/bin"
+                    cp "${BUILT_PRODUCTS_DIR}/mm" "${BUILT_PRODUCTS_DIR}/Moremaid.app/Contents/SharedSupport/bin/mm"
+                    """,
+                    name: "Copy CLI to SharedSupport",
+                    basedOnDependencyAnalysis: false
+                ),
+            ],
             dependencies: [
                 .external(name: "ZIPFoundation"),
                 .target(name: "MoremaidQuickLook"),
+                .target(name: "MoremaidCLI"),
             ],
             settings: .settings(
                 base: [
                     "SWIFT_VERSION": "6.0",
                     "SWIFT_STRICT_CONCURRENCY": "complete",
                     "CODE_SIGN_ENTITLEMENTS": "Moremaid.entitlements",
+                    "CODE_SIGN_STYLE": "Automatic",
+                    "DEVELOPMENT_TEAM": "6629AD7A87",
+                ]
+            )
+        ),
+        .target(
+            name: "MoremaidCLI",
+            destinations: .macOS,
+            product: .commandLineTool,
+            bundleId: "de.tmp8.moremaid.cli",
+            deploymentTargets: .macOS("26.0"),
+            sources: ["CLI/**"],
+            settings: .settings(
+                base: [
+                    "SWIFT_VERSION": "6.0",
+                    "PRODUCT_NAME": "mm",
                 ]
             )
         ),
@@ -58,7 +85,7 @@ let project = Project(
             name: "MoremaidQuickLook",
             destinations: .macOS,
             product: .appExtension,
-            bundleId: "com.moremaid.app.quicklook",
+            bundleId: "de.tmp8.moremaid.quicklook",
             deploymentTargets: .macOS("26.0"),
             infoPlist: .extendingDefault(with: [
                 "CFBundleShortVersionString": "1.0.0",
@@ -79,6 +106,8 @@ let project = Project(
                 base: [
                     "SWIFT_VERSION": "6.0",
                     "SWIFT_STRICT_CONCURRENCY": "complete",
+                    "CODE_SIGN_STYLE": "Automatic",
+                    "DEVELOPMENT_TEAM": "6629AD7A87",
                 ]
             )
         ),
@@ -86,7 +115,7 @@ let project = Project(
             name: "MoremaidTests",
             destinations: .macOS,
             product: .unitTests,
-            bundleId: "com.moremaid.app.tests",
+            bundleId: "de.tmp8.moremaid.tests",
             deploymentTargets: .macOS("26.0"),
             sources: ["Tests/**"],
             dependencies: [

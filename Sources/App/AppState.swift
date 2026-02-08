@@ -32,7 +32,12 @@ final class AppState {
     }
 
     init() {
+        print("[AppState] init")
         loadSavedSessions()
+        print("[AppState] loaded \(pendingSessions.count) saved sessions, restoreWindows=\(restoreWindows)")
+        for (i, s) in pendingSessions.enumerated() {
+            print("[AppState]   session[\(i)]: \(s.target.path)")
+        }
         loadRecentTargets()
         NotificationCenter.default.addObserver(
             forName: NSApplication.willTerminateNotification,

@@ -13,6 +13,8 @@ struct PreferencesView: View {
     @AppStorage("autoReload") private var autoReload = true
     @AppStorage("restoreWindows") private var restoreWindows = true
     @State private var launchAtLogin = SMAppService.mainApp.status == .enabled
+    @State private var cliStatus = CLIInstaller.checkStatus()
+    @State private var cliError: String?
 
     var body: some View {
         TabView {
@@ -25,8 +27,13 @@ struct PreferencesView: View {
                 .tabItem {
                     Label("Appearance", systemImage: "paintbrush")
                 }
+
+            cliTab
+                .tabItem {
+                    Label("CLI", systemImage: "terminal")
+                }
         }
-        .frame(width: 450, height: 350)
+        .frame(width: 480, height: 350)
     }
 
     private var generalTab: some View {
@@ -94,6 +101,79 @@ struct PreferencesView: View {
                 Button("Reset") { defaultZoom = Constants.zoomDefault; notifySettingsChanged() }
                     .buttonStyle(.bordered)
                     .controlSize(.small)
+            }
+        }
+        .formStyle(.grouped)
+        .padding()
+    }
+
+    private var cliTab: some View {
+        Form {
+            HStack {
+                Text("Status")
+                Spacer()
+                switch cliStatus {
+                case .notInstalled:
+                    Text("Not installed")
+                        .foregroundStyle(.secondary)
+                case .installed:
+                    Label("Installed", systemImage: "checkmark.circle.fill")
+                        .foregroundStyle(.green)
+                case .installedElsewhere(let path):
+                    Label("Linked elsewhere", systemImage: "exclamationmark.triangle.fill")
+                        .foregroundStyle(.orange)
+                    Text(path)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                case .conflict:
+                    Label("Conflict: not a symlink", systemImage: "xmark.circle.fill")
+                        .foregroundStyle(.red)
+                }
+            }
+
+            HStack {
+                Spacer()
+                if cliStatus == .installed {
+                    Button("Uninstall") {
+                        do {
+                            try CLIInstaller.uninstall()
+                            cliStatus = CLIInstaller.checkStatus()
+                            cliError = nil
+                        } catch {
+                            cliError = error.localizedDescription
+                        }
+                    }
+                } else {
+                    Button("Install") {
+                        do {
+                            try CLIInstaller.install()
+                            cliStatus = CLIInstaller.checkStatus()
+                            cliError = nil
+                        } catch {
+                            cliError = error.localizedDescription
+                        }
+                    }
+                }
+            }
+
+            if let cliError {
+                Text(cliError)
+                    .foregroundStyle(.red)
+                    .font(.caption)
+            }
+
+            Section {
+                Text("Opens files and folders in Moremaid from the terminal:")
+                    .foregroundStyle(.secondary)
+                    .font(.callout)
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("mm README.md")
+                    Text("mm ~/Projects")
+                }
+                .font(.system(.callout, design: .monospaced))
+                .foregroundStyle(.secondary)
+            } header: {
+                Text("Usage")
             }
         }
         .formStyle(.grouped)

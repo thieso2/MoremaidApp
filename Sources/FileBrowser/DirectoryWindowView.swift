@@ -24,6 +24,7 @@ struct DirectoryWindowView: View {
     @State private var searchInFilesResults: [SearchResult] = []
     @State private var sifFileIndex = -1
     @State private var sifMatchIndex = -1
+    @State private var sifHighlightedFile: String?
     @State private var headings: [WebViewStore.HeadingEntry] = []
     @State private var currentHeadingID = ""
     @State private var tocScrollTimer: Timer?
@@ -112,6 +113,7 @@ struct DirectoryWindowView: View {
                 Divider()
                 SearchInFilesView(
                     files: projectFiles,
+                    directoryPath: directoryPath,
                     searchQuery: $searchInFilesQuery,
                     isPresented: $showSearchPanel,
                     searchResults: $searchInFilesResults,
@@ -138,6 +140,7 @@ struct DirectoryWindowView: View {
                 webViewStore.findClear()
                 sifFileIndex = -1
                 sifMatchIndex = -1
+                sifHighlightedFile = nil
             }
         }
     }
@@ -726,6 +729,7 @@ struct DirectoryWindowView: View {
             let r = await webViewStore.findInPage(findQuery)
             findCurrent = r.current
             findTotal = r.total
+            SearchHistory.add(findQuery, for: directoryPath)
         }
     }
 
@@ -784,17 +788,34 @@ struct DirectoryWindowView: View {
         let result = searchInFilesResults[sifFileIndex]
         guard let file = projectFiles.first(where: { $0.relativePath == result.path }) else { return }
 
-        let needsNavigation = selectedFile != file
-        if needsNavigation {
-            selectedFile = file
-        }
+        let needsFileChange = selectedFile != file
+        let needsHighlight = sifHighlightedFile != result.path
 
         let matchIndex = sifMatchIndex
-        let query = searchInFilesQuery
-        let delay: Double = needsNavigation ? 0.5 : 0.05
-        DispatchQueue.main.asyncAfter(deadline: .now() + delay) {
+        if needsFileChange {
+            // Set up callback for when page finishes loading
+            let query = searchInFilesQuery
+            let path = result.path
+            webViewStore.onPageLoaded = {
+                Task { @MainActor in
+                    _ = await webViewStore.findInPage(query)
+                    sifHighlightedFile = path
+                    _ = await webViewStore.findJumpToIndex(matchIndex)
+                }
+            }
+            selectedFile = file
+        } else if needsHighlight {
+            // Same file but highlights not set up yet (first click)
+            let query = searchInFilesQuery
+            let path = result.path
             Task {
                 _ = await webViewStore.findInPage(query)
+                sifHighlightedFile = path
+                _ = await webViewStore.findJumpToIndex(matchIndex)
+            }
+        } else {
+            // Same file, highlights already active: just jump (fast)
+            Task {
                 _ = await webViewStore.findJumpToIndex(matchIndex)
             }
         }

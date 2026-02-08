@@ -14,6 +14,7 @@ class WebViewStore {
     var pendingScrollY: Double = 0
     var pendingAnchor: String?
     var hoveredLink: String = ""
+    var onPageLoaded: (() -> Void)?
     private(set) var rawContent: String?
     private(set) var currentFile: FileEntry?
     private(set) var currentBaseDirectory: String?
@@ -513,6 +514,10 @@ struct WebView: NSViewRepresentable {
         nonisolated func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {
             Task { @MainActor in
                 self.store.restorePendingScroll()
+                if let callback = self.store.onPageLoaded {
+                    self.store.onPageLoaded = nil
+                    callback()
+                }
             }
         }
 

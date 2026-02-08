@@ -55,7 +55,8 @@ enum ContentSearch {
     static func searchContent(
         query: String,
         in files: [FileEntry],
-        maxMatchesPerFile: Int = Constants.searchInFilesMaxMatches
+        maxMatchesPerFile: Int = Constants.searchInFilesMaxMatches,
+        onProgress: (@Sendable (Int) -> Void)? = nil
     ) async -> [SearchResult] {
         let queryBytes = query.lowercased().utf8
         guard !queryBytes.isEmpty else { return [] }
@@ -69,8 +70,13 @@ enum ContentSearch {
                 }
             }
             var results: [SearchResult] = []
+            var completed = 0
             for await result in group {
+                completed += 1
                 if let result { results.append(result) }
+                if completed % 10 == 0 || completed == files.count {
+                    onProgress?(completed)
+                }
             }
             // Sort by file path for stable ordering
             return results.sorted { $0.path < $1.path }

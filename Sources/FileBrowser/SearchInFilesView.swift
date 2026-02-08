@@ -2,6 +2,7 @@ import SwiftUI
 
 struct SearchInFilesView: View {
     let files: [FileEntry]
+    let directoryPath: String
     @Binding var searchQuery: String
     @Binding var isPresented: Bool
     @Binding var searchResults: [SearchResult]
@@ -17,6 +18,9 @@ struct SearchInFilesView: View {
     @State private var searchTask: Task<Void, Never>?
     @State private var totalMatchCount = 0
     @State private var expandedPaths: Set<String> = []
+    @State private var searchProgress = 0
+    @State private var showHistory = false
+    @State private var searchHistory: [String] = []
     @AppStorage("searchPanelWidth") private var panelWidth = Constants.searchPanelDefaultWidth
 
     var body: some View {
@@ -24,7 +28,9 @@ struct SearchInFilesView: View {
             panelDragHandle
             VStack(spacing: 0) {
                 searchHeader
-                if !searchResults.isEmpty {
+                if isSearching {
+                    searchingIndicator
+                } else if !searchResults.isEmpty {
                     navigationBar
                 }
                 Divider()
@@ -36,6 +42,7 @@ struct SearchInFilesView: View {
         }
         .onAppear {
             isSearchFocused = true
+            searchHistory = SearchHistory.terms(for: directoryPath)
             if !searchQuery.isEmpty {
                 triggerSearch()
             }
@@ -71,37 +78,96 @@ struct SearchInFilesView: View {
     // MARK: - Header
 
     private var searchHeader: some View {
-        HStack(spacing: 8) {
-            Image(systemName: "magnifyingglass")
-                .foregroundStyle(.secondary)
-            TextField("Search in files...", text: $searchQuery)
-                .textFieldStyle(.plain)
-                .focused($isSearchFocused)
-                .onSubmit { triggerSearch() }
-                .onChange(of: searchQuery) { debouncedSearch() }
-            if !searchQuery.isEmpty {
+        VStack(spacing: 0) {
+            HStack(spacing: 8) {
+                Image(systemName: "magnifyingglass")
+                    .foregroundStyle(.secondary)
+                TextField("Search in files...", text: $searchQuery)
+                    .textFieldStyle(.plain)
+                    .focused($isSearchFocused)
+                    .onSubmit {
+                        commitSearch()
+                    }
+                    .onChange(of: searchQuery) { debouncedSearch() }
+                    .onChange(of: isSearchFocused) {
+                        if isSearchFocused && searchQuery.isEmpty {
+                            searchHistory = SearchHistory.terms(for: directoryPath)
+                            showHistory = !searchHistory.isEmpty
+                        }
+                    }
+                if !searchQuery.isEmpty {
+                    Button {
+                        searchQuery = ""
+                        searchResults = []
+                        totalMatchCount = 0
+                        activeFileIndex = -1
+                        activeMatchIndex = -1
+                        searchHistory = SearchHistory.terms(for: directoryPath)
+                        showHistory = !searchHistory.isEmpty && isSearchFocused
+                    } label: {
+                        Image(systemName: "xmark.circle.fill")
+                            .foregroundStyle(.secondary)
+                    }
+                    .buttonStyle(.plain)
+                }
                 Button {
-                    searchQuery = ""
-                    searchResults = []
-                    totalMatchCount = 0
-                    activeFileIndex = -1
-                    activeMatchIndex = -1
+                    withAnimation(.easeInOut(duration: 0.2)) { isPresented = false }
                 } label: {
-                    Image(systemName: "xmark.circle.fill")
+                    Image(systemName: "xmark")
                         .foregroundStyle(.secondary)
                 }
                 .buttonStyle(.plain)
+                .keyboardShortcut(.escape, modifiers: [])
             }
-            Button {
-                withAnimation(.easeInOut(duration: 0.2)) { isPresented = false }
-            } label: {
-                Image(systemName: "xmark")
-                    .foregroundStyle(.secondary)
+            .padding(10)
+
+            if showHistory && searchQuery.isEmpty {
+                historyList
             }
-            .buttonStyle(.plain)
-            .keyboardShortcut(.escape, modifiers: [])
         }
-        .padding(10)
+    }
+
+    // MARK: - History
+
+    private var historyList: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            ForEach(searchHistory, id: \.self) { term in
+                Button {
+                    searchQuery = term
+                    showHistory = false
+                    commitSearch()
+                } label: {
+                    HStack(spacing: 6) {
+                        Image(systemName: "clock.arrow.circlepath")
+                            .font(.caption)
+                            .foregroundStyle(.tertiary)
+                        Text(term)
+                            .font(.callout)
+                            .lineLimit(1)
+                        Spacer()
+                    }
+                    .padding(.vertical, 4)
+                    .padding(.horizontal, 10)
+                    .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+            }
+        }
+        .padding(.bottom, 4)
+    }
+
+    // MARK: - Searching Indicator
+
+    private var searchingIndicator: some View {
+        VStack(spacing: 6) {
+            ProgressView(value: Double(searchProgress), total: Double(max(1, files.count)))
+                .progressViewStyle(.linear)
+            Text("\(searchProgress) of \(files.count) files searched")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+        }
+        .padding(.horizontal, 10)
+        .padding(.vertical, 6)
     }
 
     // MARK: - Navigation Bar
@@ -155,7 +221,7 @@ struct SearchInFilesView: View {
     private var resultsList: some View {
         ScrollViewReader { proxy in
             ScrollView {
-                VStack(alignment: .leading, spacing: 0) {
+                LazyVStack(alignment: .leading, spacing: 0) {
                     ForEach(Array(searchResults.enumerated()), id: \.element.path) { fileIndex, result in
                         resultFileGroup(result, fileIndex: fileIndex)
                     }
@@ -169,11 +235,8 @@ struct SearchInFilesView: View {
     private func scrollToActive(proxy: ScrollViewProxy) {
         guard activeFileIndex >= 0, activeMatchIndex >= 0 else { return }
         let scrollID = "\(activeFileIndex)-\(activeMatchIndex)"
-        // Delay slightly so SwiftUI layout settles before scrolling
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
-            withAnimation(.easeInOut(duration: 0.2)) {
-                proxy.scrollTo(scrollID, anchor: .center)
-            }
+        withAnimation(.easeInOut(duration: 0.15)) {
+            proxy.scrollTo(scrollID, anchor: .center)
         }
     }
 
@@ -229,53 +292,20 @@ struct SearchInFilesView: View {
     }
 
     private func matchRow(_ match: SearchMatch, matchIndex: Int, filePath: String, isActive: Bool) -> some View {
-        Button {
-            if let file = files.first(where: { $0.relativePath == filePath }) {
-                onSelectResult(file, searchQuery, match.lineNumber, matchIndex)
+        MatchRowView(
+            match: match,
+            matchIndex: matchIndex,
+            query: searchQuery,
+            isActive: isActive,
+            onTap: {
+                if let file = files.first(where: { $0.relativePath == filePath }) {
+                    onSelectResult(file, searchQuery, match.lineNumber, matchIndex)
+                }
             }
-        } label: {
-            HStack(alignment: .top, spacing: 6) {
-                Text("\(match.lineNumber)")
-                    .font(.caption.monospaced())
-                    .foregroundStyle(isActive ? .primary : .tertiary)
-                    .frame(minWidth: 30, alignment: .trailing)
-                Text(highlightedText(match.text, query: searchQuery))
-                    .font(.caption)
-                    .lineLimit(2)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-            }
-            .padding(.vertical, 3)
-            .padding(.horizontal, 4)
-            .background(
-                isActive
-                    ? RoundedRectangle(cornerRadius: 4).fill(.selection.opacity(0.3))
-                    : nil
-            )
-            .contentShape(Rectangle())
-        }
-        .buttonStyle(.plain)
+        )
     }
 
     // MARK: - Helpers
-
-    private func highlightedText(_ text: String, query: String) -> AttributedString {
-        var attributed = AttributedString(text)
-        let lowText = text.lowercased()
-        let lowQuery = query.lowercased()
-        var searchStart = lowText.startIndex
-
-        while let range = lowText.range(of: lowQuery, range: searchStart..<lowText.endIndex) {
-            let attrStart = AttributedString.Index(range.lowerBound, within: attributed)
-            let attrEnd = AttributedString.Index(range.upperBound, within: attributed)
-            if let attrStart, let attrEnd {
-                attributed[attrStart..<attrEnd].backgroundColor = .yellow.opacity(0.3)
-                attributed[attrStart..<attrEnd].font = .caption.bold()
-            }
-            searchStart = range.upperBound
-        }
-
-        return attributed
-    }
 
     private func fileIcon(for fileName: String) -> String {
         let ext = (fileName as NSString).pathExtension.lowercased()
@@ -287,8 +317,16 @@ struct SearchInFilesView: View {
 
     // MARK: - Search Logic
 
+    private func commitSearch() {
+        showHistory = false
+        guard !searchQuery.isEmpty, searchQuery.count >= Constants.searchMinTerm else { return }
+        SearchHistory.add(searchQuery, for: directoryPath)
+        triggerSearch()
+    }
+
     private func debouncedSearch() {
         searchTask?.cancel()
+        showHistory = false
         guard !searchQuery.isEmpty, searchQuery.count >= Constants.searchMinTerm else {
             searchResults = []
             totalMatchCount = 0
@@ -316,15 +354,84 @@ struct SearchInFilesView: View {
 
     private func performSearch() async {
         let query = searchQuery
-        let results = await ContentSearch.searchContent(query: query, in: files)
+        let filesCopy = files
+        searchProgress = 0
+        // Run search off main thread to avoid UI lag
+        let results = await Task.detached(priority: .userInitiated) {
+            await ContentSearch.searchContent(query: query, in: filesCopy) { completed in
+                Task { @MainActor in
+                    searchProgress = completed
+                }
+            }
+        }.value
         guard !Task.isCancelled else { return }
-        await MainActor.run {
-            searchResults = results
-            totalMatchCount = results.reduce(0) { $0 + ($1.matches?.count ?? 0) }
-            expandedPaths = Set(results.map(\.path))
-            activeFileIndex = -1
-            activeMatchIndex = -1
-            isSearching = false
+        searchResults = results
+        totalMatchCount = results.reduce(0) { $0 + ($1.matches?.count ?? 0) }
+        expandedPaths = Set(results.map(\.path))
+        activeFileIndex = -1
+        activeMatchIndex = -1
+        isSearching = false
+        SearchHistory.add(query, for: directoryPath)
+    }
+}
+
+// MARK: - Match Row (extracted for render isolation)
+
+private struct MatchRowView: View, Equatable {
+    let match: SearchMatch
+    let matchIndex: Int
+    let query: String
+    let isActive: Bool
+    let onTap: () -> Void
+
+    nonisolated static func == (lhs: MatchRowView, rhs: MatchRowView) -> Bool {
+        lhs.match.lineNumber == rhs.match.lineNumber
+            && lhs.match.text == rhs.match.text
+            && lhs.matchIndex == rhs.matchIndex
+            && lhs.query == rhs.query
+            && lhs.isActive == rhs.isActive
+    }
+
+    var body: some View {
+        Button(action: onTap) {
+            HStack(alignment: .top, spacing: 6) {
+                Text("\(match.lineNumber)")
+                    .font(.caption.monospaced())
+                    .foregroundStyle(isActive ? .primary : .tertiary)
+                    .frame(minWidth: 30, alignment: .trailing)
+                Text(highlighted)
+                    .font(.caption)
+                    .lineLimit(2)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+            }
+            .padding(.vertical, 3)
+            .padding(.horizontal, 4)
+            .background(
+                isActive
+                    ? RoundedRectangle(cornerRadius: 4).fill(.selection.opacity(0.3))
+                    : nil
+            )
+            .contentShape(Rectangle())
         }
+        .buttonStyle(.plain)
+    }
+
+    private var highlighted: AttributedString {
+        var attributed = AttributedString(match.text)
+        let lowText = match.text.lowercased()
+        let lowQuery = query.lowercased()
+        var searchStart = lowText.startIndex
+
+        while let range = lowText.range(of: lowQuery, range: searchStart..<lowText.endIndex) {
+            let attrStart = AttributedString.Index(range.lowerBound, within: attributed)
+            let attrEnd = AttributedString.Index(range.upperBound, within: attributed)
+            if let attrStart, let attrEnd {
+                attributed[attrStart..<attrEnd].backgroundColor = .yellow.opacity(0.3)
+                attributed[attrStart..<attrEnd].font = .caption.bold()
+            }
+            searchStart = range.upperBound
+        }
+
+        return attributed
     }
 }

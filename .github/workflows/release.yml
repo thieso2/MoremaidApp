@@ -220,9 +220,14 @@ jobs:
           SIGN_UPDATE="$RUNNER_TEMP/sparkle/bin/sign_update"
           chmod +x "$SIGN_UPDATE"
 
-          SIGNATURE=$(echo "$SPARKLE_EDDSA_PRIVATE_KEY" | "$SIGN_UPDATE" "$ZIP_NAME" --ed-key-file -)
-          echo "signature=$SIGNATURE" >> "$GITHUB_OUTPUT"
-          echo "Sparkle EdDSA signature: $SIGNATURE"
+          RAW=$(echo "$SPARKLE_EDDSA_PRIVATE_KEY" | "$SIGN_UPDATE" "$ZIP_NAME" --ed-key-file -)
+          echo "Raw sign_update output: $RAW"
+          # Extract edSignature value and length from output like:
+          # sparkle:edSignature="abc==" length="123"
+          ED_SIG=$(echo "$RAW" | sed -n 's/.*sparkle:edSignature="\([^"]*\)".*/\1/p')
+          ED_LEN=$(echo "$RAW" | sed -n 's/.*length="\([^"]*\)".*/\1/p')
+          echo "ed_signature=$ED_SIG" >> "$GITHUB_OUTPUT"
+          echo "ed_length=$ED_LEN" >> "$GITHUB_OUTPUT"
 
       - name: Determine pre-release
         id: prerelease
@@ -249,13 +254,14 @@ jobs:
       # --- Sparkle appcast ---
 
       - name: Update appcast.xml
-        if: steps.prerelease.outputs.is_prerelease == 'false' && steps.sparkle_sign.outputs.signature != ''
+        if: steps.prerelease.outputs.is_prerelease == 'false' && steps.sparkle_sign.outputs.ed_signature != ''
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           VERSION="${{ steps.version.outputs.version }}"
           ZIP_NAME="${{ steps.package.outputs.zip_name }}"
-          SIGNATURE="${{ steps.sparkle_sign.outputs.signature }}"
+          ED_SIG="${{ steps.sparkle_sign.outputs.ed_signature }}"
+          ED_LEN="${{ steps.sparkle_sign.outputs.ed_length }}"
           REPO="thieso2/MoremaidApp"
           PUB_DATE=$(date -u -R)
 
@@ -276,7 +282,8 @@ jobs:
               <sparkle:minimumSystemVersion>14.0</sparkle:minimumSystemVersion>
               <enclosure
                   url=\"https://github.com/${REPO}/releases/download/v${VERSION}/${ZIP_NAME}\"
-                  ${SIGNATURE}
+                  sparkle:edSignature=\"${ED_SIG}\"
+                  length=\"${ED_LEN}\"
                   type=\"application/octet-stream\" />
           </item>'''
           content = open('docs/appcast.xml').read()

@@ -33,10 +33,12 @@ jobs:
 
       - name: Check signing secrets
         id: signing
+        env:
+          HAS_CERT: ${{ secrets.APPLE_CERTIFICATE_BASE64 != '' }}
+          HAS_CERT_PASS: ${{ secrets.APPLE_CERTIFICATE_PASSWORD != '' }}
+          HAS_DEV_ID: ${{ secrets.APPLE_DEVELOPER_ID != '' }}
         run: |
-          if [ -n "${{ secrets.APPLE_CERTIFICATE_BASE64 }}" ] && \
-             [ -n "${{ secrets.APPLE_CERTIFICATE_PASSWORD }}" ] && \
-             [ -n "${{ secrets.APPLE_DEVELOPER_ID }}" ]; then
+          if [ "$HAS_CERT" = "true" ] && [ "$HAS_CERT_PASS" = "true" ] && [ "$HAS_DEV_ID" = "true" ]; then
             echo "available=true" >> "$GITHUB_OUTPUT"
           else
             echo "available=false" >> "$GITHUB_OUTPUT"

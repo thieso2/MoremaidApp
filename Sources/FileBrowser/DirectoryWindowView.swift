@@ -30,6 +30,9 @@ struct DirectoryWindowView: View {
     @State private var tocScrollTimer: Timer?
     @State private var autoIndexTimer: Timer?
     @State private var lastAutoIndexHash: Int?
+    @State private var showActivityFeed = false
+    @State private var activityStore = ActivityFeedStore()
+    @State private var fileWatcher = FileWatcher()
     @AppStorage("showBreadcrumb") private var showBreadcrumb = true
     @AppStorage("showStatusBar") private var showStatusBar = true
     @Environment(\.controlActiveState) private var controlActiveState
@@ -75,6 +78,18 @@ struct DirectoryWindowView: View {
                     handleAnchorClick(anchor)
                 }
                 scanFiles()
+                Task {
+                    let stream = await fileWatcher.watch(directory: directoryPath)
+                    for await event in stream {
+                        activityStore.processFileChangeEvent(event) { path in
+                            makeFileEntry(absolutePath: path)
+                        }
+                        updateProjectFilesFromEvent(event)
+                    }
+                }
+            }
+            .onDisappear {
+                Task { await fileWatcher.stopAll() }
             }
     }
 
@@ -133,9 +148,24 @@ struct DirectoryWindowView: View {
                 )
                 .transition(.move(edge: .trailing).combined(with: .opacity))
             }
+            if showActivityFeed {
+                Divider()
+                ActivityFeedView(
+                    activityStore: activityStore,
+                    isPresented: $showActivityFeed,
+                    onSelectFile: { file in
+                        selectedFile = file
+                    },
+                    onOpenInNewTab: { file in
+                        openInNewTab(path: file.absolutePath, fragment: nil)
+                    }
+                )
+                .transition(.move(edge: .trailing).combined(with: .opacity))
+            }
         }
         .onChange(of: selectedFile) { handleFileChange() }
         .onChange(of: showSearchPanel) {
+            if showSearchPanel { showActivityFeed = false }
             if !showSearchPanel {
                 webViewStore.findClear()
                 sifFileIndex = -1
@@ -205,7 +235,16 @@ struct DirectoryWindowView: View {
             }
             .onReceive(NotificationCenter.default.publisher(for: .searchInFiles)) { _ in
                 guard isKeyWindow else { return }
-                withAnimation(.easeInOut(duration: 0.2)) { showSearchPanel.toggle() }
+                withAnimation(.easeInOut(duration: 0.2)) {
+                    showSearchPanel.toggle()
+                }
+            }
+            .onReceive(NotificationCenter.default.publisher(for: .toggleActivityFeed)) { _ in
+                guard isKeyWindow else { return }
+                withAnimation(.easeInOut(duration: 0.2)) {
+                    showActivityFeed.toggle()
+                    if showActivityFeed { showSearchPanel = false }
+                }
             }
     }
 
@@ -521,6 +560,29 @@ struct DirectoryWindowView: View {
             .help("Find in Files (\u{21E7}\u{2318}F)")
         }
 
+        ToolbarItem(placement: .primaryAction) {
+            Button {
+                withAnimation(.easeInOut(duration: 0.2)) {
+                    showActivityFeed.toggle()
+                    if showActivityFeed { showSearchPanel = false }
+                }
+            } label: {
+                Label("Activity", systemImage: "bell")
+                    .overlay(alignment: .topTrailing) {
+                        if activityStore.unseenCount > 0 {
+                            Text("\(activityStore.unseenCount)")
+                                .font(.system(size: 9, weight: .bold))
+                                .foregroundStyle(.white)
+                                .padding(.horizontal, 4)
+                                .padding(.vertical, 1)
+                                .background(Capsule().fill(.red))
+                                .offset(x: 8, y: -6)
+                        }
+                    }
+            }
+            .help("Activity Feed (\u{21E7}\u{2318}A)")
+        }
+
     }
 
     // MARK: - History Navigation
@@ -629,6 +691,7 @@ struct DirectoryWindowView: View {
 
     private func handleFileChange() {
         guard let file = selectedFile else { return }
+        activityStore.markSeenByPath(file.absolutePath)
         let savedPath = isAutoIndex(file) ? nil : file.absolutePath
 
         if isNavigatingHistory {
@@ -839,6 +902,7 @@ struct DirectoryWindowView: View {
                 projectFiles.append(contentsOf: batch)
                 if done {
                     isScanning = false
+                    activityStore.seedKnownPaths(projectFiles)
                     if selectedFile == nil {
                         appState.registerSession(id: sessionID, target: .directory(path: directoryPath), selectedFile: nil)
                     }
@@ -897,6 +961,24 @@ struct DirectoryWindowView: View {
         "index.md", "index.markdown",
         "claude.md",
     ]
+
+    // MARK: - File Change Event
+
+    private func updateProjectFilesFromEvent(_ event: FileChangeEvent) {
+        for path in event.paths {
+            guard FileManager.default.fileExists(atPath: path) else { continue }
+            var isDir: ObjCBool = false
+            FileManager.default.fileExists(atPath: path, isDirectory: &isDir)
+            guard !isDir.boolValue else { continue }
+
+            let entry = makeFileEntry(absolutePath: path)
+            if let existingIndex = projectFiles.firstIndex(where: { $0.absolutePath == path }) {
+                projectFiles[existingIndex] = entry
+            } else {
+                projectFiles.append(entry)
+            }
+        }
+    }
 
     // MARK: - Auto-Index
 

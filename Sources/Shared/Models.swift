@@ -82,6 +82,21 @@ enum SearchMode: String, Sendable {
     case content
 }
 
+// MARK: - Activity Event
+
+struct ActivityEvent: Identifiable, Sendable {
+    let id: UUID
+    let fileEntry: FileEntry
+    let changeType: ChangeType
+    var detectedAt: Date
+    var isSeen: Bool
+
+    enum ChangeType: String, Sendable {
+        case created
+        case modified
+    }
+}
+
 // MARK: - File Filter
 
 enum FileFilter: String, Sendable {

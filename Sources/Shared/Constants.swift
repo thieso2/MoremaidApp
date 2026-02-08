@@ -33,6 +33,13 @@ enum Constants {
     static let searchPanelMaxWidth: CGFloat = 500
     static let searchPanelDefaultWidth: CGFloat = 320
 
+    // MARK: - Activity Feed
+    static let activityFeedMaxEvents = 200
+    static let activityPanelMinWidth: CGFloat = 250
+    static let activityPanelMaxWidth: CGFloat = 500
+    static let activityPanelDefaultWidth: CGFloat = 300
+    static let activityCoalesceWindow: TimeInterval = 2.0
+
     // MARK: - Archive
     static let lruCacheSize = 100 * 1024 * 1024 // 100 MB
     static let archiveExtension = ".moremaid"

@@ -401,6 +401,13 @@ struct AppCommands: Commands {
                 Label("Status Bar", systemImage: "rectangle.bottomhalf.filled")
             }
 
+            Button {
+                NotificationCenter.default.post(name: .toggleActivityFeed, object: nil)
+            } label: {
+                Label("Activity Feed", systemImage: "bell")
+            }
+            .keyboardShortcut("a", modifiers: [.command, .shift])
+
             Divider()
 
             Button {

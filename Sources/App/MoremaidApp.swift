@@ -1,6 +1,12 @@
+import Sparkle
 import SwiftUI
 
 class AppDelegate: NSObject, NSApplicationDelegate {
+    let updaterController = SPUStandardUpdaterController(
+        startingUpdater: true,
+        updaterDelegate: nil,
+        userDriverDelegate: nil
+    )
     var appState: AppState?
 
     func applicationWillFinishLaunching(_ notification: Notification) {
@@ -60,7 +66,7 @@ struct MoremaidApp: App {
         }
 
         Settings {
-            PreferencesView()
+            PreferencesView(updater: appDelegate.updaterController.updater)
                 .environment(appState)
         }
     }

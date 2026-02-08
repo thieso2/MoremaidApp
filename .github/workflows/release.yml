@@ -181,6 +181,32 @@ jobs:
           echo "zip_name=$ZIP_NAME" >> "$GITHUB_OUTPUT"
           echo "sha256=$(shasum -a 256 "$ZIP_NAME" | cut -d ' ' -f 1)" >> "$GITHUB_OUTPUT"
 
+      - name: Sign update with Sparkle EdDSA
+        if: steps.signing.outputs.available == 'true'
+        id: sparkle_sign
+        env:
+          SPARKLE_EDDSA_PRIVATE_KEY: ${{ secrets.SPARKLE_EDDSA_PRIVATE_KEY }}
+        run: |
+          ZIP_NAME="${{ steps.package.outputs.zip_name }}"
+          if [ -z "$SPARKLE_EDDSA_PRIVATE_KEY" ]; then
+            echo "::warning::SPARKLE_EDDSA_PRIVATE_KEY not set, skipping Sparkle signing"
+            echo "signature=" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          # Download Sparkle tools
+          SPARKLE_VERSION="2.7.0"
+          curl -sL "https://github.com/sparkle-project/Sparkle/releases/download/${SPARKLE_VERSION}/Sparkle-${SPARKLE_VERSION}.tar.xz" -o "$RUNNER_TEMP/sparkle.tar.xz"
+          mkdir -p "$RUNNER_TEMP/sparkle"
+          tar -xf "$RUNNER_TEMP/sparkle.tar.xz" -C "$RUNNER_TEMP/sparkle"
+
+          SIGN_UPDATE="$RUNNER_TEMP/sparkle/bin/sign_update"
+          chmod +x "$SIGN_UPDATE"
+
+          SIGNATURE=$(echo "$SPARKLE_EDDSA_PRIVATE_KEY" | "$SIGN_UPDATE" "$ZIP_NAME" --ed-key-file -)
+          echo "signature=$SIGNATURE" >> "$GITHUB_OUTPUT"
+          echo "Sparkle EdDSA signature: $SIGNATURE"
+
       - name: Determine pre-release
         id: prerelease
         run: |
@@ -202,6 +228,50 @@ jobs:
             Download `${{ steps.package.outputs.zip_name }}`, unzip, and drag to Applications.
 
             **SHA-256:** `${{ steps.package.outputs.sha256 }}`
+
+      # --- Sparkle appcast ---
+
+      - name: Update appcast.xml
+        if: steps.prerelease.outputs.is_prerelease == 'false' && steps.sparkle_sign.outputs.signature != ''
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          VERSION="${{ steps.version.outputs.version }}"
+          ZIP_NAME="${{ steps.package.outputs.zip_name }}"
+          ZIP_SIZE=$(stat -f%z "$ZIP_NAME")
+          SIGNATURE="${{ steps.sparkle_sign.outputs.signature }}"
+          REPO="thieso2/MoremaidApp"
+          PUB_DATE=$(date -u +"%a, %d %b %Y %H:%M:%S %z")
+
+          ITEM=$(cat <<ITEM_EOF
+            <item>
+                <title>Version ${VERSION}</title>
+                <pubDate>${PUB_DATE}</pubDate>
+                <sparkle:version>${VERSION}</sparkle:version>
+                <sparkle:shortVersionString>${VERSION}</sparkle:shortVersionString>
+                <sparkle:minimumSystemVersion>14.0</sparkle:minimumSystemVersion>
+                <enclosure
+                    url="https://github.com/${REPO}/releases/download/v${VERSION}/${ZIP_NAME}"
+                    ${SIGNATURE}
+                    length="${ZIP_SIZE}"
+                    type="application/octet-stream" />
+            </item>
+          ITEM_EOF
+          )
+
+          # Clone repo, update appcast, push
+          git clone "https://x-access-token:${GH_TOKEN}@github.com/${REPO}.git" "$RUNNER_TEMP/appcast-repo"
+          cd "$RUNNER_TEMP/appcast-repo"
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+
+          # Insert new item before closing </channel> tag
+          awk -v item="$ITEM" '/<\/channel>/ { print item } { print }' docs/appcast.xml > docs/appcast.xml.tmp
+          mv docs/appcast.xml.tmp docs/appcast.xml
+
+          git add docs/appcast.xml
+          git commit -m "Update appcast for v${VERSION}"
+          git push
 
       # --- Homebrew tap ---
 

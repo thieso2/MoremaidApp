@@ -1,11 +1,13 @@
-import SwiftUI
 import ServiceManagement
+import Sparkle
+import SwiftUI
 
 extension Notification.Name {
     static let settingsChanged = Notification.Name("settingsChanged")
 }
 
 struct PreferencesView: View {
+    let updater: SPUUpdater
     @Environment(AppState.self) private var appState
     @AppStorage("defaultTheme") private var defaultTheme = Constants.defaultTheme
     @AppStorage("defaultTypography") private var defaultTypography = Constants.defaultTypography
@@ -30,6 +32,11 @@ struct PreferencesView: View {
             cliTab
                 .tabItem {
                     Label("CLI", systemImage: "terminal")
+                }
+
+            updatesTab
+                .tabItem {
+                    Label("Updates", systemImage: "arrow.triangle.2.circlepath")
                 }
         }
         .frame(width: 480, height: 350)
@@ -172,6 +179,19 @@ struct PreferencesView: View {
             } header: {
                 Text("Usage")
             }
+        }
+        .formStyle(.grouped)
+        .padding()
+    }
+
+    private var updatesTab: some View {
+        Form {
+            CheckForUpdatesView(updater: updater)
+
+            Toggle("Automatically check for updates", isOn: Binding(
+                get: { updater.automaticallyChecksForUpdates },
+                set: { updater.automaticallyChecksForUpdates = $0 }
+            ))
         }
         .formStyle(.grouped)
         .padding()

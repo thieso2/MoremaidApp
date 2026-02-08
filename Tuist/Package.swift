@@ -13,5 +13,6 @@ let package = Package(
     name: "Moremaid",
     dependencies: [
         .package(url: "https://github.com/weichsel/ZIPFoundation", from: "0.9.19"),
+        .package(url: "https://github.com/sparkle-project/Sparkle", from: "2.7.0"),
     ]
 )

@@ -1,0 +1,73 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    name: Build & Test
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: jdx/mise-action@v2
+
+      - name: Install dependencies
+        run: tuist install
+
+      - name: Generate project
+        run: tuist generate --no-open
+
+      - name: Build (Debug)
+        run: |
+          tuist xcodebuild -workspace Moremaid.xcworkspace \
+            -scheme Moremaid \
+            -destination 'platform=macOS' \
+            -derivedDataPath .derivedData \
+            build
+
+      - name: Run tests
+        run: |
+          tuist xcodebuild -workspace Moremaid.xcworkspace \
+            -scheme Moremaid \
+            -destination 'platform=macOS' \
+            -derivedDataPath .derivedData \
+            test
+
+  build-release:
+    name: Build Release
+    runs-on: macos-15
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: jdx/mise-action@v2
+
+      - name: Install dependencies
+        run: tuist install
+
+      - name: Generate project
+        run: tuist generate --no-open
+
+      - name: Build (Release)
+        run: |
+          tuist xcodebuild -workspace Moremaid.xcworkspace \
+            -scheme Moremaid \
+            -configuration Release \
+            -destination 'platform=macOS' \
+            -derivedDataPath .derivedData \
+            build
+
+      - name: Upload unsigned app
+        uses: actions/upload-artifact@v4
+        with:
+          name: Moremaid-unsigned
+          path: .derivedData/Build/Products/Release/Moremaid.app
+          retention-days: 7

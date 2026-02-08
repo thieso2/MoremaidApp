@@ -1,3 +1,6 @@
+[tools]
+tuist = "latest"
+
 [vars]
 app_name = "Moremaid"
 scheme = "Moremaid"
@@ -6,12 +9,18 @@ destination = "platform=macOS"
 derived_data = ".derivedData"
 app_bundle = "Moremaid.app"
 
+[tasks.setup]
+description = "Install dependencies and generate Xcode project"
+depends = ["install"]
+run = "tuist generate --no-open"
+
 [tasks.generate]
 description = "Generate Xcode project from Tuist"
 run = "tuist generate --no-open"
 
 [tasks.build]
 description = "Build the app"
+depends = ["_ensure-workspace"]
 run = """
 tuist xcodebuild -workspace {{vars.workspace}} \
   -scheme {{vars.scheme}} \
@@ -34,7 +43,7 @@ echo "DerivedData cleaned"
 
 [tasks."clean-build"]
 description = "Clean DerivedData and rebuild from scratch"
-depends = ["clean", "generate"]
+depends = ["clean", "install", "generate"]
 run = """
 tuist xcodebuild -workspace {{vars.workspace}} \
   -scheme {{vars.scheme}} \
@@ -83,7 +92,7 @@ echo "{{vars.app_name}} launched"
 
 [tasks.test]
 description = "Run unit tests"
-depends = ["generate"]
+depends = ["_ensure-workspace"]
 run = """
 tuist xcodebuild -workspace {{vars.workspace}} \
   -scheme {{vars.scheme}} \
@@ -116,3 +125,13 @@ echo "Copied to .build/{{vars.app_bundle}}"
 [tasks.install]
 description = "Install Tuist dependencies"
 run = "tuist install"
+
+[tasks._ensure-workspace]
+description = "Run setup if workspace is missing"
+hide = true
+run = """
+if [ ! -d "{{vars.workspace}}" ]; then
+  echo "Workspace missing — running setup..."
+  tuist install && tuist generate --no-open
+fi
+"""

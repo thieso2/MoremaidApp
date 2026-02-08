@@ -11,7 +11,7 @@ let project = Project(
             deploymentTargets: .macOS("26.0"),
             infoPlist: .extendingDefault(with: [
                 "CFBundleDisplayName": "Moremaid",
-                "CFBundleShortVersionString": "1.0.0",
+                "CFBundleShortVersionString": "0.1.0",
                 "CFBundleDocumentTypes": .array([
                     .dictionary([
                         "CFBundleTypeName": "Markdown",
@@ -64,6 +64,14 @@ let project = Project(
                     "CODE_SIGN_ENTITLEMENTS": "Moremaid.entitlements",
                     "CODE_SIGN_STYLE": "Automatic",
                     "DEVELOPMENT_TEAM": "6629AD7A87",
+                    "CODE_SIGN_IDENTITY": "-",
+                    "ENABLE_HARDENED_RUNTIME": "YES",
+                ],
+                configurations: [
+                    .release(name: "Release", settings: [
+                        "SWIFT_OPTIMIZATION_LEVEL": "-O",
+                        "ENABLE_HARDENED_RUNTIME": "YES",
+                    ]),
                 ]
             )
         ),
@@ -88,7 +96,7 @@ let project = Project(
             bundleId: "de.tmp8.moremaid.quicklook",
             deploymentTargets: .macOS("26.0"),
             infoPlist: .extendingDefault(with: [
-                "CFBundleShortVersionString": "1.0.0",
+                "CFBundleShortVersionString": "0.1.0",
                 "NSExtension": .dictionary([
                     "NSExtensionPointIdentifier": "com.apple.quicklook.preview",
                     "NSExtensionPrincipalClass": "$(PRODUCT_MODULE_NAME).PreviewProvider",

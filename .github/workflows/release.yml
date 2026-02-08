@@ -1,0 +1,214 @@
+name: Release
+
+on:
+  push:
+    tags: ["v*"]
+
+env:
+  APP_NAME: Moremaid
+  SCHEME: Moremaid
+  WORKSPACE: Moremaid.xcworkspace
+  ENTITLEMENTS: Moremaid.entitlements
+
+jobs:
+  release:
+    name: Build, Sign & Release
+    runs-on: macos-15
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: jdx/mise-action@v2
+
+      - name: Extract version from tag
+        id: version
+        run: echo "version=${GITHUB_REF_NAME#v}" >> "$GITHUB_OUTPUT"
+
+      - name: Install dependencies
+        run: tuist install
+
+      - name: Generate project
+        run: tuist generate --no-open
+
+      - name: Check signing secrets
+        id: signing
+        run: |
+          if [ -n "${{ secrets.APPLE_CERTIFICATE_BASE64 }}" ] && \
+             [ -n "${{ secrets.APPLE_CERTIFICATE_PASSWORD }}" ] && \
+             [ -n "${{ secrets.APPLE_DEVELOPER_ID }}" ]; then
+            echo "available=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "available=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      # --- Signed build path ---
+
+      - name: Import signing certificate
+        if: steps.signing.outputs.available == 'true'
+        env:
+          CERTIFICATE_BASE64: ${{ secrets.APPLE_CERTIFICATE_BASE64 }}
+          CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+          KEYCHAIN_PASSWORD: ${{ secrets.KEYCHAIN_PASSWORD }}
+        run: |
+          CERT_PATH="$RUNNER_TEMP/certificate.p12"
+          KEYCHAIN_PATH="$RUNNER_TEMP/signing.keychain-db"
+
+          echo "$CERTIFICATE_BASE64" | base64 --decode > "$CERT_PATH"
+
+          security create-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
+          security set-keychain-settings -lut 21600 "$KEYCHAIN_PATH"
+          security unlock-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
+          security import "$CERT_PATH" -P "$CERTIFICATE_PASSWORD" -A -t cert -f pkcs12 -k "$KEYCHAIN_PATH"
+          security set-key-partition-list -S apple-tool:,apple: -k "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
+          security list-keychain -d user -s "$KEYCHAIN_PATH"
+
+      - name: Build (Release, signed)
+        if: steps.signing.outputs.available == 'true'
+        env:
+          DEVELOPER_ID: ${{ secrets.APPLE_DEVELOPER_ID }}
+        run: |
+          tuist xcodebuild -workspace "$WORKSPACE" \
+            -scheme "$SCHEME" \
+            -configuration Release \
+            -destination 'platform=macOS' \
+            -derivedDataPath .derivedData \
+            CODE_SIGN_IDENTITY="Developer ID Application: $DEVELOPER_ID" \
+            CODE_SIGN_STYLE=Manual \
+            build
+
+      - name: Re-sign with entitlements
+        if: steps.signing.outputs.available == 'true'
+        env:
+          DEVELOPER_ID: ${{ secrets.APPLE_DEVELOPER_ID }}
+        run: |
+          APP_PATH=".derivedData/Build/Products/Release/$APP_NAME.app"
+          codesign --force --options runtime \
+            --sign "Developer ID Application: $DEVELOPER_ID" \
+            --entitlements "$ENTITLEMENTS" \
+            "$APP_PATH"
+
+      - name: Notarize
+        if: steps.signing.outputs.available == 'true'
+        env:
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+          APPLE_APP_PASSWORD: ${{ secrets.APPLE_APP_PASSWORD }}
+        run: |
+          APP_PATH=".derivedData/Build/Products/Release/$APP_NAME.app"
+          ZIP_PATH="$RUNNER_TEMP/notarize.zip"
+
+          ditto -c -k --keepParent "$APP_PATH" "$ZIP_PATH"
+
+          xcrun notarytool submit "$ZIP_PATH" \
+            --apple-id "$APPLE_ID" \
+            --team-id "$APPLE_TEAM_ID" \
+            --password "$APPLE_APP_PASSWORD" \
+            --wait
+
+          xcrun stapler staple "$APP_PATH"
+
+      # --- Unsigned build path ---
+
+      - name: Build (Release, unsigned)
+        if: steps.signing.outputs.available != 'true'
+        run: |
+          tuist xcodebuild -workspace "$WORKSPACE" \
+            -scheme "$SCHEME" \
+            -configuration Release \
+            -destination 'platform=macOS' \
+            -derivedDataPath .derivedData \
+            CODE_SIGN_IDENTITY="-" \
+            build
+
+      # --- Package & Release ---
+
+      - name: Package ZIP
+        id: package
+        run: |
+          APP_PATH=".derivedData/Build/Products/Release/$APP_NAME.app"
+          VERSION="${{ steps.version.outputs.version }}"
+          ZIP_NAME="${APP_NAME}-${VERSION}-macOS.zip"
+          ditto -c -k --keepParent "$APP_PATH" "$ZIP_NAME"
+          echo "zip_name=$ZIP_NAME" >> "$GITHUB_OUTPUT"
+          echo "sha256=$(shasum -a 256 "$ZIP_NAME" | cut -d ' ' -f 1)" >> "$GITHUB_OUTPUT"
+
+      - name: Determine pre-release
+        id: prerelease
+        run: |
+          if echo "${{ steps.version.outputs.version }}" | grep -qE '(alpha|beta|rc)'; then
+            echo "is_prerelease=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "is_prerelease=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: ${{ steps.package.outputs.zip_name }}
+          generate_release_notes: true
+          prerelease: ${{ steps.prerelease.outputs.is_prerelease }}
+          body: |
+            ## Install
+
+            Download `${{ steps.package.outputs.zip_name }}`, unzip, and drag to Applications.
+
+            **SHA-256:** `${{ steps.package.outputs.sha256 }}`
+
+      # --- Homebrew tap ---
+
+      - name: Update Homebrew tap
+        if: steps.prerelease.outputs.is_prerelease == 'false' && secrets.HOMEBREW_TAP_TOKEN != ''
+        env:
+          HOMEBREW_TAP_TOKEN: ${{ secrets.HOMEBREW_TAP_TOKEN }}
+        run: |
+          VERSION="${{ steps.version.outputs.version }}"
+          SHA256="${{ steps.package.outputs.sha256 }}"
+          ZIP_NAME="${{ steps.package.outputs.zip_name }}"
+          REPO="thieso2/MoremaidApp"
+
+          CASK_CONTENT=$(cat <<'CASK_EOF'
+          cask "moremaidapp" do
+            version "VERSION_PLACEHOLDER"
+            sha256 "SHA256_PLACEHOLDER"
+
+            url "https://github.com/REPO_PLACEHOLDER/releases/download/v#{version}/ZIP_PLACEHOLDER",
+                verified: "github.com/REPO_PLACEHOLDER/"
+
+            name "Moremaid"
+            desc "Markdown viewer for macOS"
+            homepage "https://github.com/REPO_PLACEHOLDER"
+
+            depends_on macos: ">= :tahoe"
+
+            app "Moremaid.app"
+
+            zap trash: [
+              "~/Library/Preferences/de.tmp8.moremaid.plist",
+            ]
+          end
+          CASK_EOF
+          )
+
+          CASK_CONTENT="${CASK_CONTENT//VERSION_PLACEHOLDER/$VERSION}"
+          CASK_CONTENT="${CASK_CONTENT//SHA256_PLACEHOLDER/$SHA256}"
+          CASK_CONTENT="${CASK_CONTENT//REPO_PLACEHOLDER/$REPO}"
+          CASK_CONTENT="${CASK_CONTENT//ZIP_PLACEHOLDER/$ZIP_NAME}"
+
+          # Clone tap, update cask, push
+          git clone "https://x-access-token:${HOMEBREW_TAP_TOKEN}@github.com/thieso2/homebrew-tap.git" "$RUNNER_TEMP/homebrew-tap"
+          mkdir -p "$RUNNER_TEMP/homebrew-tap/Casks"
+          echo "$CASK_CONTENT" > "$RUNNER_TEMP/homebrew-tap/Casks/moremaidapp.rb"
+
+          cd "$RUNNER_TEMP/homebrew-tap"
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add Casks/moremaidapp.rb
+          git commit -m "Update moremaidapp to $VERSION" || echo "No changes to commit"
+          git push
+
+      # --- Cleanup ---
+
+      - name: Cleanup keychain
+        if: always() && steps.signing.outputs.available == 'true'
+        run: security delete-keychain "$RUNNER_TEMP/signing.keychain-db" 2>/dev/null || true

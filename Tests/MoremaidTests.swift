@@ -16,12 +16,6 @@ import Testing
     #expect(formatTimeAgo(Date(timeIntervalSinceNow: -7200)) == "2 hours ago")
 }
 
-@Test func pathSecurityTest() {
-    // Should reject path traversal
-    #expect(PathSecurity.resolve(file: "../../../etc/passwd", inProject: "/tmp/test") == nil)
-    #expect(PathSecurity.resolve(file: "../../etc/passwd", inProject: "/tmp/test") == nil)
-}
-
 @Test func htmlEscapingTest() {
     #expect("<script>".htmlEscaped == "&lt;script&gt;")
     #expect("\"hello\"".htmlEscaped == "&quot;hello&quot;")

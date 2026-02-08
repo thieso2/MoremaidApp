@@ -158,7 +158,7 @@ jobs:
       # --- Homebrew tap ---
 
       - name: Update Homebrew tap
-        if: steps.prerelease.outputs.is_prerelease == 'false' && secrets.HOMEBREW_TAP_TOKEN != ''
+        if: steps.prerelease.outputs.is_prerelease == 'false' && env.HOMEBREW_TAP_TOKEN != ''
         env:
           HOMEBREW_TAP_TOKEN: ${{ secrets.HOMEBREW_TAP_TOKEN }}
         run: |

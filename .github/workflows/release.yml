@@ -100,18 +100,39 @@ jobs:
           IDENTITY="${{ steps.cert.outputs.cert_cn }}"
           SIGN_FLAGS="--force --options runtime --timestamp --sign"
 
-          # Sign all frameworks and dylibs first
-          find "$APP_PATH" -name '*.dylib' -o -name '*.framework' | while read -r item; do
+          # Sign all dylibs
+          find "$APP_PATH" -name '*.dylib' | while read -r item; do
+            echo "Signing dylib: $item"
+            codesign $SIGN_FLAGS "$IDENTITY" "$item"
+          done
+
+          # Sign XPC service executables and bundles (inside-out)
+          find "$APP_PATH" -name '*.xpc' | while read -r xpc; do
+            echo "Signing XPC: $xpc"
+            codesign $SIGN_FLAGS "$IDENTITY" "$xpc"
+          done
+
+          # Sign standalone executables inside frameworks (e.g. Sparkle's Autoupdate)
+          find "$APP_PATH" -path '*/Frameworks/*.framework/Versions/*/Autoupdate' -type f | while read -r item; do
+            echo "Signing framework executable: $item"
+            codesign $SIGN_FLAGS "$IDENTITY" "$item"
+          done
+
+          # Sign framework bundles
+          find "$APP_PATH" -name '*.framework' | while read -r item; do
+            echo "Signing framework: $item"
             codesign $SIGN_FLAGS "$IDENTITY" "$item"
           done
 
           # Sign embedded extensions
           find "$APP_PATH" -name '*.appex' | while read -r item; do
+            echo "Signing appex: $item"
             codesign $SIGN_FLAGS "$IDENTITY" "$item"
           done
 
           # Sign the CLI tool
           if [ -f "$APP_PATH/Contents/SharedSupport/bin/mm" ]; then
+            echo "Signing CLI: mm"
             codesign $SIGN_FLAGS "$IDENTITY" "$APP_PATH/Contents/SharedSupport/bin/mm"
           fi
 

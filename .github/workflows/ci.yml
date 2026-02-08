@@ -13,7 +13,7 @@ concurrency:
 jobs:
   build:
     name: Build & Test
-    runs-on: macos-15
+    runs-on: macos-26
     steps:
       - uses: actions/checkout@v4
 
@@ -43,7 +43,7 @@ jobs:
 
   build-release:
     name: Build Release
-    runs-on: macos-15
+    runs-on: macos-26
     if: github.ref == 'refs/heads/main' && github.event_name == 'push'
     steps:
       - uses: actions/checkout@v4

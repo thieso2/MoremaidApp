@@ -11,7 +11,7 @@ let project = Project(
             deploymentTargets: .macOS("26.0"),
             infoPlist: .extendingDefault(with: [
                 "CFBundleDisplayName": "Moremaid",
-                "CFBundleShortVersionString": "0.2.0",
+                "CFBundleShortVersionString": "0.2.1",
                 "SUFeedURL": "https://thieso2.github.io/MoremaidApp/appcast.xml",
                 "SUPublicEDKey": "yrFdJunpoYLR83/TkZPyh2b7Pt5WCm2+XIhzTVL4T7I=",
                 "SUEnableAutomaticChecks": true,
@@ -108,7 +108,7 @@ let project = Project(
             bundleId: "de.tmp8.moremaid.quicklook",
             deploymentTargets: .macOS("26.0"),
             infoPlist: .extendingDefault(with: [
-                "CFBundleShortVersionString": "0.2.0",
+                "CFBundleShortVersionString": "0.2.1",
                 "NSExtension": .dictionary([
                     "NSExtensionPointIdentifier": "com.apple.quicklook.preview",
                     "NSExtensionPrincipalClass": "$(PRODUCT_MODULE_NAME).PreviewProvider",

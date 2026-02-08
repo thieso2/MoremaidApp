@@ -155,7 +155,7 @@ struct SearchInFilesView: View {
     private var resultsList: some View {
         ScrollViewReader { proxy in
             ScrollView {
-                LazyVStack(alignment: .leading, spacing: 0) {
+                VStack(alignment: .leading, spacing: 0) {
                     ForEach(Array(searchResults.enumerated()), id: \.element.path) { fileIndex, result in
                         resultFileGroup(result, fileIndex: fileIndex)
                     }
@@ -169,8 +169,11 @@ struct SearchInFilesView: View {
     private func scrollToActive(proxy: ScrollViewProxy) {
         guard activeFileIndex >= 0, activeMatchIndex >= 0 else { return }
         let scrollID = "\(activeFileIndex)-\(activeMatchIndex)"
-        withAnimation(.easeInOut(duration: 0.2)) {
-            proxy.scrollTo(scrollID, anchor: .center)
+        // Delay slightly so SwiftUI layout settles before scrolling
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
+            withAnimation(.easeInOut(duration: 0.2)) {
+                proxy.scrollTo(scrollID, anchor: .center)
+            }
         }
     }
 

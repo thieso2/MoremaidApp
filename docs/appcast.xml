@@ -6,5 +6,16 @@
         <description>Moremaid app updates</description>
         <language>en</language>
         <!-- Items are inserted by CI on release -->
+            <item>
+    <title>Version 0.2.0</title>
+    <pubDate>Sun, 08 Feb 2026 16:57:50 +0000</pubDate>
+    <sparkle:version>0.2.0</sparkle:version>
+    <sparkle:shortVersionString>0.2.0</sparkle:shortVersionString>
+    <sparkle:minimumSystemVersion>14.0</sparkle:minimumSystemVersion>
+    <enclosure
+        url="https://github.com/thieso2/MoremaidApp/releases/download/v0.2.0/Moremaid-0.2.0-macOS.zip"
+        sparkle:edSignature=tNC9fDlms0MrPFa+OSHeQsqrp07y8lbjiNlgExEar1xQKBiuZOyfCDLCp6XHJA1Wxm8iBaPpxdKI0zvCKf98Aw== length=7387900
+        type="application/octet-stream" />
+</item>
     </channel>
 </rss>

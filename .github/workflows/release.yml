@@ -97,10 +97,32 @@ jobs:
         if: steps.signing.outputs.available == 'true'
         run: |
           APP_PATH=".derivedData/Build/Products/Release/$APP_NAME.app"
-          codesign --force --options runtime \
-            --sign "${{ steps.cert.outputs.cert_cn }}" \
+          IDENTITY="${{ steps.cert.outputs.cert_cn }}"
+          SIGN_FLAGS="--force --options runtime --timestamp --sign"
+
+          # Sign all frameworks and dylibs first
+          find "$APP_PATH" -name '*.dylib' -o -name '*.framework' | while read -r item; do
+            codesign $SIGN_FLAGS "$IDENTITY" "$item"
+          done
+
+          # Sign embedded extensions
+          find "$APP_PATH" -name '*.appex' | while read -r item; do
+            codesign $SIGN_FLAGS "$IDENTITY" "$item"
+          done
+
+          # Sign the CLI tool
+          if [ -f "$APP_PATH/Contents/SharedSupport/bin/mm" ]; then
+            codesign $SIGN_FLAGS "$IDENTITY" "$APP_PATH/Contents/SharedSupport/bin/mm"
+          fi
+
+          # Sign the main app bundle with entitlements
+          codesign $SIGN_FLAGS "$IDENTITY" \
             --entitlements "$ENTITLEMENTS" \
             "$APP_PATH"
+
+          # Verify
+          codesign --verify --deep --strict "$APP_PATH"
+          echo "Code signing verified successfully"
 
       - name: Notarize
         if: steps.signing.outputs.available == 'true'

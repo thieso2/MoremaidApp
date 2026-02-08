@@ -200,7 +200,21 @@ enum PageScripts {
                 ['class="language-yml"', 'class="language-yaml"'],
                 ['class="language-sh"', 'class="language-bash"'],
                 ['class="language-shell"', 'class="language-bash"'],
-                ['class="language-cs"', 'class="language-csharp"']
+                ['class="language-zsh"', 'class="language-bash"'],
+                ['class="language-cs"', 'class="language-csharp"'],
+                ['class="language-dockerfile"', 'class="language-docker"'],
+                ['class="language-objc"', 'class="language-objectivec"'],
+                ['class="language-objective-c"', 'class="language-objectivec"'],
+                ['class="language-tex"', 'class="language-latex"'],
+                ['class="language-ps1"', 'class="language-powershell"'],
+                ['class="language-bat"', 'class="language-batch"'],
+                ['class="language-cmd"', 'class="language-batch"'],
+                ['class="language-proto"', 'class="language-protobuf"'],
+                ['class="language-tf"', 'class="language-hcl"'],
+                ['class="language-terraform"', 'class="language-hcl"'],
+                ['class="language-gql"', 'class="language-graphql"'],
+                ['class="language-patch"', 'class="language-diff"'],
+                ['class="language-f#"', 'class="language-fsharp"']
             ];
             aliases.forEach(function(pair) {
                 htmlContent = htmlContent.split(pair[0]).join(pair[1]);
@@ -267,7 +281,21 @@ enum PageScripts {
             ['class="language-yml"', 'class="language-yaml"'],
             ['class="language-sh"', 'class="language-bash"'],
             ['class="language-shell"', 'class="language-bash"'],
-            ['class="language-cs"', 'class="language-csharp"']
+            ['class="language-zsh"', 'class="language-bash"'],
+            ['class="language-cs"', 'class="language-csharp"'],
+            ['class="language-dockerfile"', 'class="language-docker"'],
+            ['class="language-objc"', 'class="language-objectivec"'],
+            ['class="language-objective-c"', 'class="language-objectivec"'],
+            ['class="language-tex"', 'class="language-latex"'],
+            ['class="language-ps1"', 'class="language-powershell"'],
+            ['class="language-bat"', 'class="language-batch"'],
+            ['class="language-cmd"', 'class="language-batch"'],
+            ['class="language-proto"', 'class="language-protobuf"'],
+            ['class="language-tf"', 'class="language-hcl"'],
+            ['class="language-terraform"', 'class="language-hcl"'],
+            ['class="language-gql"', 'class="language-graphql"'],
+            ['class="language-patch"', 'class="language-diff"'],
+            ['class="language-f#"', 'class="language-fsharp"']
         ];
         aliases.forEach(function(pair) {
             htmlContent = htmlContent.split(pair[0]).join(pair[1]);

@@ -121,8 +121,7 @@ class WebViewStore {
         if file.isMarkdown {
             webView?.evaluateJavaScript("reRenderMarkdown(\(escaped));", completionHandler: nil)
         } else {
-            let ext = (file.name as NSString).pathExtension.lowercased()
-            let language = LanguageMaps.extensionToLanguage[ext] ?? "plaintext"
+            let language = LanguageMaps.language(forFile: file.name)
             webView?.evaluateJavaScript("reRenderCode(\(escaped), '\(language)');", completionHandler: nil)
         }
     }

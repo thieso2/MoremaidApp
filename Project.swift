@@ -68,6 +68,9 @@ let project = Project(
                     "ENABLE_HARDENED_RUNTIME": "YES",
                 ],
                 configurations: [
+                    .debug(name: "Debug", settings: [
+                        "PRODUCT_BUNDLE_IDENTIFIER": "de.tmp8.moremaid.debug",
+                    ]),
                     .release(name: "Release", settings: [
                         "SWIFT_OPTIMIZATION_LEVEL": "-O",
                         "ENABLE_HARDENED_RUNTIME": "YES",
@@ -86,6 +89,11 @@ let project = Project(
                 base: [
                     "SWIFT_VERSION": "6.0",
                     "PRODUCT_NAME": "mm",
+                ],
+                configurations: [
+                    .debug(name: "Debug", settings: [
+                        "PRODUCT_BUNDLE_IDENTIFIER": "de.tmp8.moremaid.debug.cli",
+                    ]),
                 ]
             )
         ),
@@ -119,6 +127,11 @@ let project = Project(
                     "CODE_SIGN_ENTITLEMENTS": "MoremaidQuickLook.entitlements",
                     "CODE_SIGN_STYLE": "Automatic",
                     "DEVELOPMENT_TEAM": "6629AD7A87",
+                ],
+                configurations: [
+                    .debug(name: "Debug", settings: [
+                        "PRODUCT_BUNDLE_IDENTIFIER": "de.tmp8.moremaid.debug.quicklook",
+                    ]),
                 ]
             )
         ),

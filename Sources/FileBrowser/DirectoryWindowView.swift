@@ -674,15 +674,12 @@ struct DirectoryWindowView: View {
     }
 
     private func openAsTab() {
-        let before = Set(NSApp.windows.map(\.windowNumber))
         let sourceWindow = webViewStore.webView?.window
+        let previousMode = sourceWindow?.tabbingMode
+        sourceWindow?.tabbingMode = .preferred
         openWindow(id: "main")
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
-            guard let sourceWindow else { return }
-            if let newWindow = NSApp.windows.first(where: { !before.contains($0.windowNumber) && $0.canBecomeMain }) {
-                sourceWindow.addTabbedWindow(newWindow, ordered: .above)
-                newWindow.makeKeyAndOrderFront(nil)
-            }
+        if let previousMode {
+            sourceWindow?.tabbingMode = previousMode
         }
     }
 

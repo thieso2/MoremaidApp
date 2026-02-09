@@ -20,7 +20,21 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         for (i, w) in NSApp.windows.enumerated() {
             print("[AppDelegate]   window[\(i)]: visible=\(w.isVisible) alpha=\(w.alphaValue) title='\(w.title)' frame=\(w.frame)")
         }
+
+        #if DEBUG
+        applyDevIcon()
+        #endif
     }
+
+    #if DEBUG
+    /// Set dock icon at runtime to bypass macOS icon cache.
+    private func applyDevIcon() {
+        let icnsPath = Bundle.main.path(forResource: "AppIcon", ofType: "icns") ?? ""
+        if let icon = NSImage(contentsOfFile: icnsPath), icon.isValid {
+            NSApp.applicationIconImage = icon
+        }
+    }
+    #endif
 
     func application(_ application: NSApplication, open urls: [URL]) {
         print("[AppDelegate] open urls: \(urls)")

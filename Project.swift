@@ -8,11 +8,11 @@ let project = Project(
             destinations: .macOS,
             product: .app,
             bundleId: "de.tmp8.moremaid",
-            deploymentTargets: .macOS("26.0"),
+            deploymentTargets: .macOS("15.0"),
             infoPlist: .extendingDefault(with: [
                 "CFBundleDisplayName": "Moremaid",
-                "CFBundleShortVersionString": "0.2.5",
-                "CFBundleVersion": "4",
+                "CFBundleShortVersionString": "0.2.6",
+                "CFBundleVersion": "5",
                 "SUFeedURL": "https://thieso2.github.io/MoremaidApp/appcast.xml",
                 "SUPublicEDKey": "yrFdJunpoYLR83/TkZPyh2b7Pt5WCm2+XIhzTVL4T7I=",
                 "SUEnableAutomaticChecks": true,
@@ -88,7 +88,7 @@ let project = Project(
             destinations: .macOS,
             product: .commandLineTool,
             bundleId: "de.tmp8.moremaid.cli",
-            deploymentTargets: .macOS("26.0"),
+            deploymentTargets: .macOS("15.0"),
             sources: ["CLI/**"],
             settings: .settings(
                 base: [
@@ -107,10 +107,10 @@ let project = Project(
             destinations: .macOS,
             product: .appExtension,
             bundleId: "de.tmp8.moremaid.quicklook",
-            deploymentTargets: .macOS("26.0"),
+            deploymentTargets: .macOS("15.0"),
             infoPlist: .extendingDefault(with: [
-                "CFBundleShortVersionString": "0.2.5",
-                "CFBundleVersion": "4",
+                "CFBundleShortVersionString": "0.2.6",
+                "CFBundleVersion": "5",
                 "NSExtension": .dictionary([
                     "NSExtensionPointIdentifier": "com.apple.quicklook.preview",
                     "NSExtensionPrincipalClass": "$(PRODUCT_MODULE_NAME).PreviewProvider",
@@ -146,7 +146,7 @@ let project = Project(
             destinations: .macOS,
             product: .unitTests,
             bundleId: "de.tmp8.moremaid.tests",
-            deploymentTargets: .macOS("26.0"),
+            deploymentTargets: .macOS("15.0"),
             sources: ["Tests/**"],
             dependencies: [
                 .target(name: "Moremaid"),

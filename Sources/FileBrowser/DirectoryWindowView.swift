@@ -303,7 +303,7 @@ struct DirectoryWindowView: View {
                 .keyboardShortcut(.escape, modifiers: [])
         }
         .padding(8)
-        .glassEffect(.regular, in: .rect(cornerRadius: 12))
+        .modifier(GlassEffectModifier())
         .padding(.top, 8)
         .padding(.horizontal, 16)
     }
@@ -408,7 +408,7 @@ struct DirectoryWindowView: View {
             }
             .padding(.horizontal, 12)
             .padding(.vertical, 4)
-            .glassEffect(.regular, in: .rect(cornerRadius: 8))
+            .modifier(GlassEffectModifier(cornerRadius: 8))
             .padding(.horizontal, 8)
             .padding(.top, 4)
         }

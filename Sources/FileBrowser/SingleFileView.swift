@@ -183,7 +183,7 @@ struct SingleFileView: View {
                 .keyboardShortcut(.escape, modifiers: [])
         }
         .padding(8)
-        .glassEffect(.regular, in: .rect(cornerRadius: 12))
+        .modifier(GlassEffectModifier())
         .padding(.top, 8)
         .padding(.horizontal, 16)
     }

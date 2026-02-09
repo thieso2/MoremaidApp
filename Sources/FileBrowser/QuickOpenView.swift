@@ -190,7 +190,7 @@ struct QuickOpenView: View {
             // Bottom bar
             bottomBar
         }
-        .glassEffect(.regular, in: .rect(cornerRadius: 12))
+        .modifier(GlassEffectModifier())
         .frame(width: 520)
         .onKeyPress(.upArrow) {
             if selectedIndex > 0 { selectedIndex -= 1 }
@@ -564,4 +564,19 @@ private func fuzzyMatchIndices(_ string: String, query: String) -> Set<Int> {
         }
     }
     return indices
+}
+
+// MARK: - Glass effect (macOS 26+)
+
+struct GlassEffectModifier: ViewModifier {
+    var cornerRadius: CGFloat = 12
+
+    func body(content: Content) -> some View {
+        if #available(macOS 26.0, *) {
+            content.glassEffect(.regular, in: .rect(cornerRadius: cornerRadius))
+        } else {
+            content
+                .background(.ultraThinMaterial, in: .rect(cornerRadius: cornerRadius))
+        }
+    }
 }

@@ -19,6 +19,7 @@ enum PageScripts {
         \(codeCopyButtonsScript)
         \(markedRenderScript)
         \(liveRerenderScript)
+        \(autoIndexSortScript)
         \(headingListScript)
         \(findInPageScript)
         \(searchQueryJS != "null" ? searchHighlightScript(searchQueryJS: searchQueryJS) : "")
@@ -248,6 +249,7 @@ enum PageScripts {
 
             setTimeout(function() {
                 try { Prism.highlightAll(); addCopyButtons(); } catch(e) { console.error('Prism error:', e); }
+                if (typeof setupAutoIndexSort === 'function') setupAutoIndexSort();
             }, 10);
 
             var diagrams = contentDiv.querySelectorAll('.mermaid');
@@ -300,6 +302,7 @@ enum PageScripts {
 
         setTimeout(function() {
             try { Prism.highlightAll(); addCopyButtons(); } catch(e) {}
+            if (typeof setupAutoIndexSort === 'function') setupAutoIndexSort();
         }, 10);
 
         var diagrams = contentDiv.querySelectorAll('.mermaid');
@@ -339,6 +342,80 @@ enum PageScripts {
         code.className = 'language-' + language;
         try { Prism.highlightAll(); } catch(e) {}
     }
+    """
+
+    // MARK: - Auto-Index Table Sort
+
+    private static let autoIndexSortScript = """
+    (function() {
+        var aiSortColumn = 'modified';
+        var aiSortAscending = false;
+
+        function setupAutoIndexSort() {
+            var table = document.querySelector('table.auto-index');
+            if (!table) return;
+
+            // Re-apply current sort after content re-render
+            sortAutoIndexTable(table);
+
+            var ths = table.querySelectorAll('th.ai-sortable');
+            ths.forEach(function(th) {
+                var col = th.getAttribute('data-sort');
+                var indicator = th.querySelector('.sort-indicator');
+                if (indicator) indicator.remove();
+
+                if (col === aiSortColumn) {
+                    var span = document.createElement('span');
+                    span.className = 'sort-indicator';
+                    span.textContent = aiSortAscending ? ' \\u25B2' : ' \\u25BC';
+                    th.appendChild(span);
+                }
+
+                th.onclick = function() {
+                    if (aiSortColumn === col) {
+                        aiSortAscending = !aiSortAscending;
+                    } else {
+                        aiSortColumn = col;
+                        aiSortAscending = col === 'name';
+                    }
+                    sortAutoIndexTable(table);
+                    setupAutoIndexSort();
+                };
+            });
+        }
+
+        function sortAutoIndexTable(table) {
+            var tbody = table.querySelector('tbody');
+            if (!tbody) return;
+            var rows = Array.from(tbody.querySelectorAll('tr'));
+
+            rows.sort(function(a, b) {
+                var aVal, bVal;
+                switch (aiSortColumn) {
+                    case 'name':
+                        aVal = (a.getAttribute('data-name') || '').toLowerCase();
+                        bVal = (b.getAttribute('data-name') || '').toLowerCase();
+                        return aiSortAscending
+                            ? aVal.localeCompare(bVal)
+                            : bVal.localeCompare(aVal);
+                    case 'size':
+                        aVal = parseInt(a.getAttribute('data-size') || '0', 10);
+                        bVal = parseInt(b.getAttribute('data-size') || '0', 10);
+                        return aiSortAscending ? aVal - bVal : bVal - aVal;
+                    case 'modified':
+                        aVal = parseInt(a.getAttribute('data-date') || '0', 10);
+                        bVal = parseInt(b.getAttribute('data-date') || '0', 10);
+                        return aiSortAscending ? aVal - bVal : bVal - aVal;
+                    default:
+                        return 0;
+                }
+            });
+
+            rows.forEach(function(row) { tbody.appendChild(row); });
+        }
+
+        window.setupAutoIndexSort = setupAutoIndexSort;
+    })();
     """
 
     // MARK: - Heading List (for TOC)

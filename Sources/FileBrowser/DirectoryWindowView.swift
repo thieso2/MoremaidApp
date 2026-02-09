@@ -1061,27 +1061,53 @@ struct DirectoryWindowView: View {
             }
         }
 
-        var md = "# \(dirName)\n\n"
+        var md = ""
 
         if dirs.isEmpty && files.isEmpty {
             md += "*Empty directory*\n"
             return md
         }
 
-        md += "| Name | Size | Modified |\n"
-        md += "|------|------|----------|\n"
+        // Default order: newest first (matches JS default sort)
+        let sortedDirs = dirs.sorted { $0.date > $1.date }
+        let sortedFiles = files.sorted { $0.date > $1.date }
 
-        for d in dirs {
-            let escaped = d.name.replacingOccurrences(of: "|", with: "\\|")
+        md += """
+        <table class="auto-index">
+        <thead><tr>
+        <th class="ai-sortable" data-sort="name">Name</th>
+        <th class="ai-sortable" data-sort="size">Size</th>
+        <th class="ai-sortable" data-sort="modified">Modified</th>
+        </tr></thead>
+        <tbody>
+
+        """
+
+        for d in sortedDirs {
+            let htmlName = d.name.htmlEscaped
             let encoded = d.name.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) ?? d.name
-            md += "| 📁 [\(escaped)/](\(encoded)/) | — | \(formatTimeAgo(d.date)) |\n"
+            let attrName = d.name.htmlEscaped
+            let timestamp = Int(d.date.timeIntervalSince1970)
+            md += "<tr data-name=\"\(attrName)\" data-size=\"-1\" data-date=\"\(timestamp)\" data-dir=\"1\">"
+            md += "<td><a href=\"\(encoded)/\">\(htmlName)/</a></td>"
+            md += "<td class=\"ai-size\">—</td>"
+            md += "<td class=\"ai-date\">\(formatTimeAgo(d.date))</td>"
+            md += "</tr>\n"
         }
 
-        for f in files {
-            let escaped = f.name.replacingOccurrences(of: "|", with: "\\|")
+        for f in sortedFiles {
+            let htmlName = f.name.htmlEscaped
             let encoded = f.name.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) ?? f.name
-            md += "| [\(escaped)](\(encoded)) | \(formatSize(f.size)) | \(formatTimeAgo(f.date)) |\n"
+            let attrName = f.name.htmlEscaped
+            let timestamp = Int(f.date.timeIntervalSince1970)
+            md += "<tr data-name=\"\(attrName)\" data-size=\"\(f.size)\" data-date=\"\(timestamp)\">"
+            md += "<td><a href=\"\(encoded)\">\(htmlName)</a></td>"
+            md += "<td class=\"ai-size\">\(formatSize(f.size))</td>"
+            md += "<td class=\"ai-date\">\(formatTimeAgo(f.date))</td>"
+            md += "</tr>\n"
         }
+
+        md += "</tbody></table>\n"
 
         return md
     }

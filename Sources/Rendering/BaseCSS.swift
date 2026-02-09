@@ -150,6 +150,76 @@ enum BaseCSS {
         font-weight: bold;
     }
 
+    table.auto-index {
+        border: none;
+        margin: 0;
+    }
+
+    table.auto-index th,
+    table.auto-index td {
+        border: none;
+        border-bottom: 1px solid var(--table-border);
+        padding: 6px 12px;
+    }
+
+    table.auto-index th {
+        background: transparent;
+        font-weight: 500;
+        font-size: 0.8em;
+        text-transform: uppercase;
+        letter-spacing: 0.04em;
+        color: var(--secondary-text, #888);
+        padding-bottom: 8px;
+    }
+
+    table.auto-index td {
+        padding-top: 8px;
+        padding-bottom: 8px;
+    }
+
+    table.auto-index tr:last-child td {
+        border-bottom: none;
+    }
+
+    table.auto-index tr:hover td {
+        background: var(--table-header-bg);
+    }
+
+    table.auto-index .ai-size,
+    table.auto-index th[data-sort="size"] {
+        text-align: right;
+        white-space: nowrap;
+    }
+
+    table.auto-index .ai-date,
+    table.auto-index th[data-sort="modified"] {
+        white-space: nowrap;
+        color: var(--secondary-text, #888);
+    }
+
+    table.auto-index td .ai-date {
+        color: var(--secondary-text, #888);
+    }
+
+    table.auto-index .ai-size {
+        color: var(--secondary-text, #888);
+    }
+
+    table.auto-index th.ai-sortable {
+        cursor: pointer;
+        user-select: none;
+        white-space: nowrap;
+    }
+
+    table.auto-index th.ai-sortable:hover {
+        color: var(--text-color);
+    }
+
+    table.auto-index .sort-indicator {
+        opacity: 0.6;
+        font-size: 0.85em;
+    }
+
     hr {
         border: none;
         border-top: 1px solid var(--border-color);

@@ -110,6 +110,21 @@ enum BaseCSS {
 
     a { color: var(--link-color); text-decoration: none; }
     a:hover { text-decoration: underline; }
+    a[href^="http"]::after, a[href^="//"]::after {
+        content: "";
+        display: inline-block;
+        width: 0.7em;
+        height: 0.7em;
+        margin-left: 0.15em;
+        vertical-align: baseline;
+        position: relative;
+        top: -0.1em;
+        background-color: var(--link-color);
+        -webkit-mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Cpath d='M3.75 2A1.75 1.75 0 002 3.75v8.5c0 .966.784 1.75 1.75 1.75h8.5A1.75 1.75 0 0014 12.25v-3.5a.75.75 0 00-1.5 0v3.5a.25.25 0 01-.25.25h-8.5a.25.25 0 01-.25-.25v-8.5a.25.25 0 01.25-.25h3.5a.75.75 0 000-1.5h-3.5zm6.75 0a.75.75 0 000 1.5h1.94L8.22 7.72a.75.75 0 001.06 1.06l4.22-4.22v1.94a.75.75 0 001.5 0V2.75a.75.75 0 00-.75-.75h-4.5z'/%3E%3C/svg%3E");
+        -webkit-mask-size: contain;
+        -webkit-mask-repeat: no-repeat;
+        opacity: 0.6;
+    }
 
     ul, ol {
         margin-left: 30px;

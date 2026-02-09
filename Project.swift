@@ -55,6 +55,21 @@ let project = Project(
                     name: "Copy CLI to SharedSupport",
                     basedOnDependencyAnalysis: false
                 ),
+                .post(
+                    script: """
+                    if [ "$CONFIGURATION" != "Debug" ]; then exit 0; fi
+                    ICON_SRC="$SRCROOT/Resources/Assets.xcassets/AppIcon.appiconset"
+                    ICONSET="$DERIVED_FILE_DIR/DevAppIcon.iconset"
+                    ICNS_DST="$BUILT_PRODUCTS_DIR/$PRODUCT_NAME.app/Contents/Resources/AppIcon.icns"
+                    rm -rf "$ICONSET"
+                    swift "$SRCROOT/Scripts/dev-icon-badge.swift" "$ICON_SRC" "$ICONSET" \
+                      && iconutil --convert icns "$ICONSET" -o "$ICNS_DST" \
+                      && echo "Dev icon badge applied" \
+                      || echo "warning: Dev icon badge failed (non-fatal)"
+                    """,
+                    name: "Dev Icon Badge",
+                    basedOnDependencyAnalysis: false
+                ),
             ],
             dependencies: [
                 .external(name: "ZIPFoundation"),

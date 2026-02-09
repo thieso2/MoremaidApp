@@ -64,9 +64,13 @@ struct QuickOpenView: View {
         markdownOnly ? files.filter { $0.isMarkdown } : files
     }
 
-    /// Flat mode results — all files, filtered by query.
+    /// Flat mode results — files in currentDir and below, filtered by query.
     private var flatResults: [FileEntry] {
         var results = baseFiles
+        if !currentDir.isEmpty {
+            let prefix = currentDir + "/"
+            results = results.filter { $0.relativePath.hasPrefix(prefix) || $0.directory == currentDir }
+        }
         if !query.isEmpty {
             let q = query.lowercased()
             results = results.filter { fuzzyMatch($0.name.lowercased(), query: q) }
@@ -130,7 +134,7 @@ struct QuickOpenView: View {
             HStack(spacing: 8) {
                 Image(systemName: "magnifyingglass")
                     .foregroundStyle(.secondary)
-                TextField(browseMode == .directory ? "Filter in directory..." : "Search all files...", text: $query)
+                TextField(browseMode == .flat && currentDir.isEmpty ? "Search all files..." : "Filter in directory...", text: $query)
                     .textFieldStyle(.plain)
                     .font(.title3)
                     .focused($isSearchFocused)
@@ -165,8 +169,8 @@ struct QuickOpenView: View {
                 .padding(.horizontal, 12)
                 .padding(.vertical, 4)
             }
-            .opacity(browseMode == .directory ? 1 : 0)
-            .allowsHitTesting(browseMode == .directory)
+            .opacity(currentDir.isEmpty ? 0 : 1)
+            .allowsHitTesting(!currentDir.isEmpty)
 
             Divider()
 
@@ -209,7 +213,7 @@ struct QuickOpenView: View {
         .onKeyPress(.escape) {
             if !query.isEmpty {
                 query = ""
-            } else if browseMode == .directory && !currentDir.isEmpty {
+            } else if !currentDir.isEmpty {
                 goUp()
             } else {
                 onDismiss()

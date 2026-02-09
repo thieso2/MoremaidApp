@@ -13,6 +13,7 @@ let project = Project(
                 "CFBundleDisplayName": "Moremaid",
                 "CFBundleShortVersionString": "0.2.7",
                 "CFBundleVersion": "6",
+                "NSHumanReadableCopyright": "Copyright \u{00A9} 2026 Thies C. Arntzen",
                 "SUFeedURL": "https://thieso2.github.io/MoremaidApp/appcast.xml",
                 "SUPublicEDKey": "yrFdJunpoYLR83/TkZPyh2b7Pt5WCm2+XIhzTVL4T7I=",
                 "SUEnableAutomaticChecks": true,

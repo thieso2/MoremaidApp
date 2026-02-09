@@ -126,8 +126,16 @@ jobs:
           # 4. Framework bundles
           find "$APP_PATH" -name '*.framework' | while read -r item; do sign "$item"; done
 
-          # 5. App extensions
-          find "$APP_PATH" -name '*.appex' | while read -r item; do sign "$item"; done
+          # 5. App extensions (with their own entitlements)
+          QL_ENTITLEMENTS="MoremaidQuickLook.entitlements"
+          find "$APP_PATH" -name '*.appex' | while read -r item; do
+            APPEX_NAME=$(basename "$item" .appex)
+            if [ "$APPEX_NAME" = "MoremaidQuickLook" ] && [ -f "$QL_ENTITLEMENTS" ]; then
+              sign "$item" --entitlements "$QL_ENTITLEMENTS"
+            else
+              sign "$item"
+            fi
+          done
 
           # 6. CLI tool
           if [ -f "$APP_PATH/Contents/SharedSupport/bin/mm" ]; then

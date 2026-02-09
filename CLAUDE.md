@@ -81,6 +81,19 @@ SwiftUI `WindowGroup(id: "main")` creates windows. Each `WindowRootView` instanc
 - `defaultTheme`, `defaultTypography`, `defaultZoom` — appearance preferences
 - `showBreadcrumb`, `showStatusBar`, `restoreWindows` — UI toggle states
 
+## Releasing
+
+To release a new version:
+
+1. Bump `CFBundleShortVersionString` and `CFBundleVersion` in `Project.swift` (both Moremaid and MoremaidQuickLook targets)
+2. Commit the version bump
+3. Create a GitHub Release with a `v`-prefixed tag (this triggers the CI workflow):
+   ```bash
+   gh release create v0.X.Y --generate-notes --title "v0.X.Y"
+   ```
+   **Do NOT just push a tag** — the release workflow triggers on tag push, but creating the release via `gh release create` ensures the tag and release are created atomically.
+4. CI handles: build, sign, notarize, attach ZIP to release, update Sparkle appcast, update Homebrew tap
+
 ## Gotchas
 
 - **macOS Tahoe toolbar placements:** Only `.navigation` renders by default. Use `.toolbarRole(.editor)` on the view for `.primaryAction`/`.secondaryAction` items to appear.

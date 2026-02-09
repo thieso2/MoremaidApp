@@ -85,7 +85,7 @@ SwiftUI `WindowGroup(id: "main")` creates windows. Each `WindowRootView` instanc
 
 To release a new version:
 
-1. Bump `CFBundleShortVersionString` and `CFBundleVersion` in `Project.swift` (both Moremaid and MoremaidQuickLook targets)
+1. Bump **both** `CFBundleShortVersionString` **and** `CFBundleVersion` (integer build number) in `Project.swift` (both Moremaid and MoremaidQuickLook targets). **`CFBundleVersion` MUST be incremented** — Sparkle uses `sparkle:version` (derived from `CFBundleVersion`) to detect updates; if the build number stays the same, Sparkle will not offer the update.
 2. Commit the version bump
 3. Create a GitHub Release with a `v`-prefixed tag (this triggers the CI workflow):
    ```bash

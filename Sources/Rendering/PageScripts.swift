@@ -180,45 +180,64 @@ enum PageScripts {
     }
     """
 
-    // MARK: - marked.js Rendering
+    // MARK: - markdown-it Rendering
 
     private static let markedRenderScript = """
-    document.addEventListener('DOMContentLoaded', async function() {
-        marked.use(markedGfmHeadingId.gfmHeadingId());
-        marked.setOptions({ breaks: true, gfm: true, langPrefix: 'language-' });
+    var md = markdownit({ html: true, breaks: true, linkify: true, langPrefix: 'language-' });
 
+    // Heading ID generation (slugify + deduplicate)
+    var _headingIds = {};
+    function slugify(s) {
+        return s.toLowerCase().replace(/[^\\w\\s-]/g, '').replace(/\\s+/g, '-').replace(/-+/g, '-').replace(/^-|-$/g, '');
+    }
+    md.renderer.rules.heading_open = function(tokens, idx) {
+        var token = tokens[idx];
+        var level = token.tag;
+        var content = '';
+        for (var i = idx + 1; i < tokens.length && tokens[i].type !== 'heading_close'; i++) {
+            if (tokens[i].children) {
+                tokens[i].children.forEach(function(c) { content += c.content; });
+            }
+        }
+        var base = slugify(content);
+        var id = base;
+        if (_headingIds[id]) { id = base + '-' + _headingIds[base]++; } else { _headingIds[base] = 1; }
+        return '<' + level + ' id="' + id + '">';
+    };
+
+    var langAliases = {
+        js: 'javascript', ts: 'typescript', py: 'python', rb: 'ruby',
+        yml: 'yaml', sh: 'bash', shell: 'bash', zsh: 'bash',
+        cs: 'csharp', dockerfile: 'docker', objc: 'objectivec',
+        'objective-c': 'objectivec', tex: 'latex', ps1: 'powershell',
+        bat: 'batch', cmd: 'batch', proto: 'protobuf',
+        tf: 'hcl', terraform: 'hcl', gql: 'graphql',
+        patch: 'diff', 'f#': 'fsharp'
+    };
+
+    // Override fence renderer to apply language aliases
+    var defaultFence = md.renderer.rules.fence || function(tokens, idx, options, env, self) {
+        return self.renderToken(tokens, idx, options);
+    };
+    md.renderer.rules.fence = function(tokens, idx, options, env, self) {
+        var token = tokens[idx];
+        var info = token.info ? token.info.trim() : '';
+        if (info) {
+            var lang = info.split(/\\s+/)[0];
+            token.info = langAliases[lang] || lang;
+        }
+        return defaultFence(tokens, idx, options, env, self);
+    };
+
+    function renderMarkdown(src) {
+        _headingIds = {};
+        return md.render(src);
+    }
+
+    document.addEventListener('DOMContentLoaded', async function() {
         var contentDiv = document.getElementById('content');
         if (contentDiv && rawMarkdown) {
-            markedGfmHeadingId.resetHeadings();
-            var htmlContent = marked.parse(rawMarkdown);
-
-            var aliases = [
-                ['class="language-js"', 'class="language-javascript"'],
-                ['class="language-ts"', 'class="language-typescript"'],
-                ['class="language-py"', 'class="language-python"'],
-                ['class="language-rb"', 'class="language-ruby"'],
-                ['class="language-yml"', 'class="language-yaml"'],
-                ['class="language-sh"', 'class="language-bash"'],
-                ['class="language-shell"', 'class="language-bash"'],
-                ['class="language-zsh"', 'class="language-bash"'],
-                ['class="language-cs"', 'class="language-csharp"'],
-                ['class="language-dockerfile"', 'class="language-docker"'],
-                ['class="language-objc"', 'class="language-objectivec"'],
-                ['class="language-objective-c"', 'class="language-objectivec"'],
-                ['class="language-tex"', 'class="language-latex"'],
-                ['class="language-ps1"', 'class="language-powershell"'],
-                ['class="language-bat"', 'class="language-batch"'],
-                ['class="language-cmd"', 'class="language-batch"'],
-                ['class="language-proto"', 'class="language-protobuf"'],
-                ['class="language-tf"', 'class="language-hcl"'],
-                ['class="language-terraform"', 'class="language-hcl"'],
-                ['class="language-gql"', 'class="language-graphql"'],
-                ['class="language-patch"', 'class="language-diff"'],
-                ['class="language-f#"', 'class="language-fsharp"']
-            ];
-            aliases.forEach(function(pair) {
-                htmlContent = htmlContent.split(pair[0]).join(pair[1]);
-            });
+            var htmlContent = renderMarkdown(rawMarkdown);
 
             htmlContent = htmlContent.replace(/<pre><code class="language-mermaid">([\\s\\S]*?)<\\/code><\\/pre>/g,
                 function(match, code) {
@@ -270,36 +289,7 @@ enum PageScripts {
         var contentDiv = document.getElementById('content');
         if (!contentDiv) return;
 
-        markedGfmHeadingId.resetHeadings();
-        var htmlContent = marked.parse(rawMarkdown);
-
-        var aliases = [
-            ['class="language-js"', 'class="language-javascript"'],
-            ['class="language-ts"', 'class="language-typescript"'],
-            ['class="language-py"', 'class="language-python"'],
-            ['class="language-rb"', 'class="language-ruby"'],
-            ['class="language-yml"', 'class="language-yaml"'],
-            ['class="language-sh"', 'class="language-bash"'],
-            ['class="language-shell"', 'class="language-bash"'],
-            ['class="language-zsh"', 'class="language-bash"'],
-            ['class="language-cs"', 'class="language-csharp"'],
-            ['class="language-dockerfile"', 'class="language-docker"'],
-            ['class="language-objc"', 'class="language-objectivec"'],
-            ['class="language-objective-c"', 'class="language-objectivec"'],
-            ['class="language-tex"', 'class="language-latex"'],
-            ['class="language-ps1"', 'class="language-powershell"'],
-            ['class="language-bat"', 'class="language-batch"'],
-            ['class="language-cmd"', 'class="language-batch"'],
-            ['class="language-proto"', 'class="language-protobuf"'],
-            ['class="language-tf"', 'class="language-hcl"'],
-            ['class="language-terraform"', 'class="language-hcl"'],
-            ['class="language-gql"', 'class="language-graphql"'],
-            ['class="language-patch"', 'class="language-diff"'],
-            ['class="language-f#"', 'class="language-fsharp"']
-        ];
-        aliases.forEach(function(pair) {
-            htmlContent = htmlContent.split(pair[0]).join(pair[1]);
-        });
+        var htmlContent = renderMarkdown(rawMarkdown);
 
         htmlContent = htmlContent.replace(/<pre><code class="language-mermaid">([\\s\\S]*?)<\\/code><\\/pre>/g,
             function(match, code) {

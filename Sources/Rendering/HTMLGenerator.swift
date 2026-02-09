@@ -29,8 +29,7 @@ enum HTMLGenerator {
             <script src="https://cdn.jsdelivr.net/npm/prismjs@\(Constants.prismVersion)/prism.min.js"></script>
             <script src="https://cdn.jsdelivr.net/npm/prismjs@\(Constants.prismVersion)/plugins/autoloader/prism-autoloader.min.js"></script>
             <script>Prism.plugins.autoloader.languages_path = 'https://cdn.jsdelivr.net/npm/prismjs@\(Constants.prismVersion)/components/';</script>
-            <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
-            <script src="https://cdn.jsdelivr.net/npm/marked-gfm-heading-id/lib/index.umd.js"></script>
+            <script src="https://cdn.jsdelivr.net/npm/markdown-it/dist/markdown-it.min.js"></script>
             <style>
         \(ThemeCSS.all)
         \(TypographyCSS.all)

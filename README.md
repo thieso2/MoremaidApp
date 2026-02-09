@@ -84,7 +84,7 @@ CLI/             # Bundled `mm` command-line tool
 QuickLook/       # Finder QuickLook extension
 ```
 
-Built with SwiftUI and WebKit. `HTMLGenerator` produces inline HTML with marked.js, Prism.js, and Mermaid.js rendered through `WKWebView`.
+Built with SwiftUI and WebKit. `HTMLGenerator` produces inline HTML with markdown-it, Prism.js, and Mermaid.js rendered through `WKWebView`.
 
 ## Open-Source Libraries
 
@@ -94,8 +94,7 @@ Moremaid is built on top of excellent open-source projects:
 
 | Library | Purpose | License |
 |---------|---------|---------|
-| [Marked](https://marked.js.org/) | Fast Markdown parser and compiler | MIT |
-| [marked-gfm-heading-id](https://github.com/markedjs/marked-gfm-heading-id) | GitHub-flavored heading anchors | MIT |
+| [markdown-it](https://github.com/markdown-it/markdown-it) | Fast Markdown parser (CommonMark) | MIT |
 | [Mermaid](https://mermaid.js.org/) | Diagrams and flowcharts from text | MIT |
 | [Prism.js](https://prismjs.com/) | Syntax highlighting for 200+ languages | MIT |
 | [MiniSearch](https://lucaong.github.io/minisearch/) | Tiny full-text search engine | MIT |
@@ -108,7 +107,7 @@ Moremaid is built on top of excellent open-source projects:
 
 ## Requirements
 
-- macOS 14.0+ (Sonoma)
+- macOS 15.0+ (Sequoia)
 - Built with Swift 6, SwiftUI, and WebKit
 
 ## Installation
@@ -152,4 +151,4 @@ Contributions are welcome! Open an issue or submit a pull request.
 
 ---
 
-Built with [Claude](https://claude.ai) | Powered by [Marked](https://marked.js.org/), [Mermaid](https://mermaid.js.org/), and [Prism.js](https://prismjs.com/)
+Built with [Claude](https://claude.ai) | Powered by [markdown-it](https://github.com/markdown-it/markdown-it), [Mermaid](https://mermaid.js.org/), and [Prism.js](https://prismjs.com/)

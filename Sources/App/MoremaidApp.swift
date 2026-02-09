@@ -49,6 +49,7 @@ struct MoremaidApp: App {
     @Environment(\.openWindow) private var openWindow
 
     init() {
+        setbuf(stdout, nil)
         print("[MoremaidApp] init")
         QuickOpenShortcut.install()
     }

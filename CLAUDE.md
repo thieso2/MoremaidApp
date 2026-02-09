@@ -23,7 +23,7 @@ After changing `Project.swift` or `Tuist.swift`, run `mise generate` before `mis
 - **Bundle ID:** `de.tmp8.moremaid` (team `6629AD7A87`, automatic signing)
 - **Targets:** Moremaid (app), MoremaidCLI (command-line `mm`), MoremaidQuickLook (extension), MoremaidTests
 - **Swift 6** with strict concurrency, macOS 14.0+ deployment target
-- **Dependencies:** ZIPFoundation (ZIP handling); marked.js, Prism.js, Mermaid.js loaded via CDN
+- **Dependencies:** ZIPFoundation (ZIP handling); markdown-it, Prism.js, Mermaid.js loaded via CDN
 - **App sandbox disabled** via `Moremaid.entitlements` for filesystem access
 - **Tuist** for project generation, DerivedData in local `.derivedData/`
 
@@ -56,7 +56,7 @@ SwiftUI `WindowGroup(id: "main")` creates windows. Each `WindowRootView` instanc
 
 ### Rendering Pipeline
 
-`HTMLGenerator` → inline HTML with marked.js + Prism.js + Mermaid.js → loaded into `WKWebView`
+`HTMLGenerator` → inline HTML with markdown-it + Prism.js + Mermaid.js → loaded into `WKWebView`
 
 - All CSS/JS inlined in the HTML string (no local file serving for single pages)
 - 10 color themes, 6 typography styles (configured via `Constants`)

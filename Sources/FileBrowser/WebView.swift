@@ -453,6 +453,16 @@ struct WebView: NSViewRepresentable {
                     window.webkit.messageHandlers.nativeLog.postMessage('[warn] ' + msg);
                     origWarn.apply(console, arguments);
                 };
+                window.onerror = function(message, source, lineno, colno, error) {
+                    var msg = '[uncaught] ' + message + ' at ' + source + ':' + lineno + ':' + colno;
+                    if (error && error.stack) msg += '\\n' + error.stack;
+                    window.webkit.messageHandlers.nativeLog.postMessage(msg);
+                };
+                window.addEventListener('unhandledrejection', function(e) {
+                    var reason = e.reason;
+                    var msg = '[unhandledrejection] ' + (reason && reason.stack ? reason.stack : String(reason));
+                    window.webkit.messageHandlers.nativeLog.postMessage(msg);
+                });
             })();
             """, injectionTime: .atDocumentStart, forMainFrameOnly: true)
         config.userContentController.addUserScript(consoleScript)
@@ -519,6 +529,14 @@ struct WebView: NSViewRepresentable {
                     callback()
                 }
             }
+        }
+
+        nonisolated func webView(_ webView: WKWebView, didFail navigation: WKNavigation!, withError error: Error) {
+            print("[moremaid] navigation failed: \(error.localizedDescription)")
+        }
+
+        nonisolated func webView(_ webView: WKWebView, didFailProvisionalNavigation navigation: WKNavigation!, withError error: Error) {
+            print("[moremaid] provisional navigation failed: \(error.localizedDescription)")
         }
 
         func webView(

@@ -65,5 +65,17 @@
         length="7383335"
         type="application/octet-stream" />
 </item>
+            <item>
+    <title>Version 0.2.6</title>
+    <pubDate>Mon, 09 Feb 2026 08:37:02 +0000</pubDate>
+    <sparkle:version>5</sparkle:version>
+    <sparkle:shortVersionString>0.2.6</sparkle:shortVersionString>
+    <sparkle:minimumSystemVersion>14.0</sparkle:minimumSystemVersion>
+    <enclosure
+        url="https://github.com/thieso2/MoremaidApp/releases/download/v0.2.6/Moremaid-0.2.6-macOS.zip"
+        sparkle:edSignature="N/b4B4t+4z1T4A+Jxw4d6OSYoDeB8f9jdtG4pVjV+di4tw3M3XxDAr4DYVNz8TYvncxuoKrHn6/u0EQ7iK+dDw=="
+        length="7382024"
+        type="application/octet-stream" />
+</item>
     </channel>
 </rss>

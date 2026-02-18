@@ -105,7 +105,15 @@ let project = Project(
             product: .commandLineTool,
             bundleId: "de.tmp8.moremaid.cli",
             deploymentTargets: .macOS("15.0"),
-            sources: ["CLI/**"],
+            sources: [
+                "CLI/**",
+                "Sources/Validation/**",
+                "Sources/FileBrowser/FileScanner.swift",
+                "Sources/FileBrowser/GitignoreParser.swift",
+                "Sources/Shared/Models.swift",
+                "Sources/Shared/Constants.swift",
+                "Sources/Shared/Utilities.swift",
+            ],
             settings: .settings(
                 base: [
                     "SWIFT_VERSION": "6.0",

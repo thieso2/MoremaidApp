@@ -9,11 +9,27 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     )
     var appState: AppState?
 
+    // MARK: - PDF batch mode
+
+    /// True when launched by `mm --pdf` to convert files headlessly.
+    private var isPDFBatchMode: Bool {
+        ProcessInfo.processInfo.arguments.contains("--pdf")
+    }
+
     func applicationWillFinishLaunching(_ notification: Notification) {
         print("[AppDelegate] applicationWillFinishLaunching")
+        if isPDFBatchMode {
+            // Run silently — no Dock icon, no app-switcher entry.
+            NSApp.setActivationPolicy(.prohibited)
+        }
     }
 
     func applicationDidFinishLaunching(_ notification: Notification) {
+        if isPDFBatchMode {
+            Task { @MainActor in await runPDFBatch() }
+            return
+        }
+
         let windowCount = NSApp.windows.count
         let visibleWindows = NSApp.windows.filter { $0.isVisible }
         print("[AppDelegate] applicationDidFinishLaunching — windows: \(windowCount), visible: \(visibleWindows.count)")
@@ -24,6 +40,42 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         #if DEBUG
         applyDevIcon()
         #endif
+    }
+
+    /// Parse arguments and export each markdown file to PDF, then exit.
+    @MainActor
+    private func runPDFBatch() async {
+        let args = Array(ProcessInfo.processInfo.arguments.dropFirst())
+        var inputFiles: [String] = []
+        var outputDir = FileManager.default.currentDirectoryPath
+        var idx = args.startIndex
+        while idx < args.endIndex {
+            let arg = args[idx]
+            idx = args.index(after: idx)
+            if arg == "--pdf" { continue }
+            if arg == "--output" {
+                if idx < args.endIndex { outputDir = args[idx]; idx = args.index(after: idx) }
+                continue
+            }
+            if !arg.hasPrefix("-") { inputFiles.append(arg) }
+        }
+
+        let exporter = PDFBatchExporter()
+        var exitCode: Int32 = 0
+
+        for inputPath in inputFiles {
+            let stem = ((inputPath as NSString).lastPathComponent as NSString).deletingPathExtension
+            let outputPath = (outputDir as NSString).appendingPathComponent("\(stem).pdf")
+            do {
+                try await exporter.export(inputPath: inputPath, outputPath: outputPath)
+                print("✓ \(outputPath)")
+            } catch {
+                fputs("✗ \(inputPath): \(error.localizedDescription)\n", stderr)
+                exitCode = 1
+            }
+        }
+
+        exit(exitCode)
     }
 
     #if DEBUG

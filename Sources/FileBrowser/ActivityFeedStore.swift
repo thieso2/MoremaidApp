@@ -45,23 +45,21 @@ final class ActivityFeedStore {
 
             let changeType: ActivityEvent.ChangeType = knownPaths.contains(path) ? .modified : .created
 
-            // Coalesce: if an unseen event for same path exists within the coalesce window, update it
-            if let existingIndex = events.firstIndex(where: { $0.fileEntry.absolutePath == path && !$0.isSeen }) {
+            // Deduplicate: if an event for the same path already exists, update and move to top
+            if let existingIndex = events.firstIndex(where: { $0.fileEntry.absolutePath == path }) {
                 let existing = events[existingIndex]
-                if Date().timeIntervalSince(existing.detectedAt) < Constants.activityCoalesceWindow {
-                    events[existingIndex] = ActivityEvent(
-                        id: existing.id,
-                        fileEntry: fileEntry,
-                        changeType: existing.changeType == .created ? .created : changeType,
-                        detectedAt: Date(),
-                        isSeen: false
-                    )
-                    // Move to front
-                    let updated = events.remove(at: existingIndex)
-                    events.insert(updated, at: 0)
-                    knownPaths.insert(path)
-                    continue
-                }
+                let updated = ActivityEvent(
+                    id: existing.id,
+                    fileEntry: fileEntry,
+                    changeType: existing.changeType == .created ? .created : changeType,
+                    detectedAt: Date(),
+                    isSeen: false,
+                    updateCount: existing.updateCount + 1
+                )
+                events.remove(at: existingIndex)
+                events.insert(updated, at: 0)
+                knownPaths.insert(path)
+                continue
             }
 
             // New event
@@ -85,37 +83,19 @@ final class ActivityFeedStore {
 
     func markSeen(id: UUID) {
         if let index = events.firstIndex(where: { $0.id == id }) {
-            events[index] = ActivityEvent(
-                id: events[index].id,
-                fileEntry: events[index].fileEntry,
-                changeType: events[index].changeType,
-                detectedAt: events[index].detectedAt,
-                isSeen: true
-            )
+            events[index].isSeen = true
         }
     }
 
     func markSeenByPath(_ path: String) {
         for (index, event) in events.enumerated() where event.fileEntry.absolutePath == path && !event.isSeen {
-            events[index] = ActivityEvent(
-                id: event.id,
-                fileEntry: event.fileEntry,
-                changeType: event.changeType,
-                detectedAt: event.detectedAt,
-                isSeen: true
-            )
+            events[index].isSeen = true
         }
     }
 
     func markAllSeen() {
-        for (index, event) in events.enumerated() where !event.isSeen {
-            events[index] = ActivityEvent(
-                id: event.id,
-                fileEntry: event.fileEntry,
-                changeType: event.changeType,
-                detectedAt: event.detectedAt,
-                isSeen: true
-            )
+        for index in events.indices where !events[index].isSeen {
+            events[index].isSeen = true
         }
     }
 

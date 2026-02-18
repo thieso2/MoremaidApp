@@ -146,6 +146,12 @@ struct ActivityFeedView: View {
                         Text(formatTimeAgo(event.detectedAt))
                             .font(.caption2)
                             .foregroundStyle(.tertiary)
+                        if event.updateCount > 1 {
+                            Text("\u{00D7}\(event.updateCount)")
+                                .font(.caption2)
+                                .fontWeight(.medium)
+                                .foregroundStyle(.secondary)
+                        }
                     }
                 }
 

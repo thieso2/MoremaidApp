@@ -90,6 +90,7 @@ struct ActivityEvent: Identifiable, Sendable {
     let changeType: ChangeType
     var detectedAt: Date
     var isSeen: Bool
+    var updateCount: Int = 1
 
     enum ChangeType: String, Sendable {
         case created

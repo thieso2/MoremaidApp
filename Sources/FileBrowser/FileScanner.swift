@@ -1,6 +1,9 @@
 import Foundation
 
 private let scanQueue = DispatchQueue(label: "com.moremaid.scanner", qos: .userInitiated)
+private let resourceKeys: Set<URLResourceKey> = [.isRegularFileKey, .fileSizeKey, .contentModificationDateKey]
+private let resourceKeysArray = Array(resourceKeys)
+private let parallelQueue = DispatchQueue(label: "com.moremaid.scanner.parallel", qos: .userInitiated, attributes: .concurrent)
 
 enum FileScanner {
     /// Recursively scans a directory for files, respecting .gitignore patterns.
@@ -10,7 +13,7 @@ enum FileScanner {
 
         guard let enumerator = fm.enumerator(
             at: URL(fileURLWithPath: basePath),
-            includingPropertiesForKeys: [.isRegularFileKey, .fileSizeKey, .contentModificationDateKey],
+            includingPropertiesForKeys: resourceKeysArray,
             options: [.skipsHiddenFiles]
         ) else { return [] }
 
@@ -20,8 +23,7 @@ enum FileScanner {
         for case let url as URL in enumerator {
             let relativePath = String(url.path.dropFirst(basePath.count + 1))
 
-            let components = relativePath.split(separator: "/").map(String.init)
-            if components.contains("node_modules") || components.contains(".git") {
+            if shouldSkipComponent(relativePath) {
                 if url.hasDirectoryPath { enumerator.skipDescendants() }
                 continue
             }
@@ -31,13 +33,13 @@ enum FileScanner {
                 continue
             }
 
-            guard let values = try? url.resourceValues(forKeys: [.isRegularFileKey, .fileSizeKey, .contentModificationDateKey]),
+            guard let values = try? url.resourceValues(forKeys: resourceKeys),
                   values.isRegularFile == true else { continue }
 
             let isMd = isMarkdownFile(url.lastPathComponent)
             if filter == .markdownOnly && !isMd { continue }
 
-            let entry = FileEntry(
+            entries.append(FileEntry(
                 id: relativePath,
                 name: url.lastPathComponent,
                 relativePath: relativePath,
@@ -45,14 +47,13 @@ enum FileScanner {
                 size: values.fileSize ?? 0,
                 modifiedDate: values.contentModificationDate ?? Date.distantPast,
                 isMarkdown: isMd
-            )
-            entries.append(entry)
+            ))
         }
 
         return entries
     }
 
-    /// Scans on a background queue, dispatching batches to the caller via callback.
+    /// Scans on background queues, parallelizing across top-level subdirectories.
     static func scanBatched(
         directory: String,
         filter: FileFilter,
@@ -62,90 +63,140 @@ enum FileScanner {
         scanQueue.async {
             let start = CFAbsoluteTimeGetCurrent()
             let basePath = (directory as NSString).standardizingPath
+            let baseURL = URL(fileURLWithPath: basePath)
+            let fm = FileManager.default
             print("[scan] starting: \(basePath)")
 
-            guard let enumerator = FileManager.default.enumerator(
-                at: URL(fileURLWithPath: basePath),
-                includingPropertiesForKeys: [.isRegularFileKey, .fileSizeKey, .contentModificationDateKey],
+            let gitignore = GitignoreParser(basePath: basePath)
+
+            // Collect top-level entries: scan root files + gather subdirectories
+            var rootFiles: [FileEntry] = []
+            var subdirs: [(url: URL, relativeName: String)] = []
+
+            if let contents = try? fm.contentsOfDirectory(
+                at: baseURL,
+                includingPropertiesForKeys: resourceKeysArray,
                 options: [.skipsHiddenFiles]
-            ) else {
-                print("[scan] failed to create enumerator")
+            ) {
+                for url in contents {
+                    let name = url.lastPathComponent
+                    if name == "node_modules" || name == ".git" { continue }
+                    if gitignore.isIgnored(name) { continue }
+
+                    if url.hasDirectoryPath {
+                        subdirs.append((url: url, relativeName: name))
+                    } else {
+                        guard let values = try? url.resourceValues(forKeys: resourceKeys),
+                              values.isRegularFile == true else { continue }
+                        let isMd = isMarkdownFile(name)
+                        if filter == .markdownOnly && !isMd { continue }
+                        rootFiles.append(FileEntry(
+                            id: name, name: name, relativePath: name, absolutePath: url.path,
+                            size: values.fileSize ?? 0,
+                            modifiedDate: values.contentModificationDate ?? Date.distantPast,
+                            isMarkdown: isMd
+                        ))
+                    }
+                }
+            }
+
+            if !rootFiles.isEmpty {
+                callback(rootFiles, false)
+            }
+
+            if subdirs.isEmpty {
                 callback([], true)
+                let elapsed = (CFAbsoluteTimeGetCurrent() - start) * 1000
+                print("[scan] done: \(rootFiles.count) files, 0 subdirs, \(String(format: "%.1f", elapsed))ms")
                 return
             }
 
-            let gitignoreStart = CFAbsoluteTimeGetCurrent()
-            let gitignore = GitignoreParser(basePath: basePath)
-            print("[scan] gitignore parsed in \(String(format: "%.1f", (CFAbsoluteTimeGetCurrent() - gitignoreStart) * 1000))ms")
+            // Scan subdirectories in parallel
+            let group = DispatchGroup()
+            let totalFiles = UnsafeMutablePointer<Int>.allocate(capacity: 1)
+            totalFiles.initialize(to: rootFiles.count)
+            let lock = NSLock()
 
-            var batch: [FileEntry] = []
-            var count = 0
-            var skippedDirs = 0
-            var enumTime = 0.0
-            var gitignoreTime = 0.0
-            var statTime = 0.0
+            for subdir in subdirs {
+                group.enter()
+                parallelQueue.async {
+                    let prefix = subdir.relativeName + "/"
+                    var batch: [FileEntry] = []
 
-            for case let url as URL in enumerator {
-                let t0 = CFAbsoluteTimeGetCurrent()
-                let relativePath = String(url.path.dropFirst(basePath.count + 1))
-                enumTime += CFAbsoluteTimeGetCurrent() - t0
+                    guard let enumerator = fm.enumerator(
+                        at: subdir.url,
+                        includingPropertiesForKeys: resourceKeysArray,
+                        options: [.skipsHiddenFiles]
+                    ) else {
+                        group.leave()
+                        return
+                    }
 
-                let components = relativePath.split(separator: "/").map(String.init)
-                if components.contains("node_modules") || components.contains(".git") {
-                    if url.hasDirectoryPath { enumerator.skipDescendants(); skippedDirs += 1 }
-                    continue
-                }
+                    for case let url as URL in enumerator {
+                        let relativePath = prefix + String(url.path.dropFirst(subdir.url.path.count + 1))
 
-                let t1 = CFAbsoluteTimeGetCurrent()
-                let ignored = gitignore.isIgnored(relativePath)
-                gitignoreTime += CFAbsoluteTimeGetCurrent() - t1
+                        if shouldSkipComponent(relativePath) {
+                            if url.hasDirectoryPath { enumerator.skipDescendants() }
+                            continue
+                        }
 
-                if ignored {
-                    if url.hasDirectoryPath { enumerator.skipDescendants(); skippedDirs += 1 }
-                    continue
-                }
+                        if gitignore.isIgnored(relativePath) {
+                            if url.hasDirectoryPath { enumerator.skipDescendants() }
+                            continue
+                        }
 
-                let t2 = CFAbsoluteTimeGetCurrent()
-                guard let values = try? url.resourceValues(forKeys: [.isRegularFileKey, .fileSizeKey, .contentModificationDateKey]),
-                      values.isRegularFile == true else {
-                    statTime += CFAbsoluteTimeGetCurrent() - t2
-                    continue
-                }
-                statTime += CFAbsoluteTimeGetCurrent() - t2
+                        guard let values = try? url.resourceValues(forKeys: resourceKeys),
+                              values.isRegularFile == true else { continue }
 
-                let isMd = isMarkdownFile(url.lastPathComponent)
-                if filter == .markdownOnly && !isMd { continue }
+                        let isMd = isMarkdownFile(url.lastPathComponent)
+                        if filter == .markdownOnly && !isMd { continue }
 
-                count += 1
-                if count == 1 {
-                    print("[scan] first file found in \(String(format: "%.1f", (CFAbsoluteTimeGetCurrent() - start) * 1000))ms")
-                }
+                        batch.append(FileEntry(
+                            id: relativePath,
+                            name: url.lastPathComponent,
+                            relativePath: relativePath,
+                            absolutePath: url.path,
+                            size: values.fileSize ?? 0,
+                            modifiedDate: values.contentModificationDate ?? Date.distantPast,
+                            isMarkdown: isMd
+                        ))
 
-                batch.append(FileEntry(
-                    id: relativePath,
-                    name: url.lastPathComponent,
-                    relativePath: relativePath,
-                    absolutePath: url.path,
-                    size: values.fileSize ?? 0,
-                    modifiedDate: values.contentModificationDate ?? Date.distantPast,
-                    isMarkdown: isMd
-                ))
+                        if batch.count >= batchSize {
+                            let chunk = batch
+                            batch = []
+                            lock.lock()
+                            totalFiles.pointee += chunk.count
+                            lock.unlock()
+                            callback(chunk, false)
+                        }
+                    }
 
-                if batch.count >= batchSize {
-                    let chunk = batch
-                    batch = []
-                    callback(chunk, false)
+                    if !batch.isEmpty {
+                        lock.lock()
+                        totalFiles.pointee += batch.count
+                        lock.unlock()
+                        callback(batch, false)
+                    }
+                    group.leave()
                 }
             }
 
-            if !batch.isEmpty {
-                callback(batch, false)
-            }
+            group.wait()
             callback([], true)
 
+            let count = totalFiles.pointee
+            totalFiles.deallocate()
             let elapsed = (CFAbsoluteTimeGetCurrent() - start) * 1000
-            print("[scan] done: \(count) files, \(skippedDirs) dirs skipped, \(String(format: "%.1f", elapsed))ms")
-            print("[scan] breakdown — enum: \(String(format: "%.1f", enumTime * 1000))ms, gitignore: \(String(format: "%.1f", gitignoreTime * 1000))ms, stat: \(String(format: "%.1f", statTime * 1000))ms")
+            print("[scan] done: \(count) files, \(subdirs.count) subdirs parallel, \(String(format: "%.1f", elapsed))ms")
         }
+    }
+
+    private static func shouldSkipComponent(_ relativePath: String) -> Bool {
+        // Fast check: look for /node_modules or /node_modules/ and /.git or /.git/
+        if relativePath.contains("node_modules") || relativePath.contains(".git") {
+            let components = relativePath.split(separator: "/")
+            return components.contains("node_modules") || components.contains(".git")
+        }
+        return false
     }
 }

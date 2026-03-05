@@ -1,5 +1,45 @@
 import SwiftUI
 
+/// Thread-safe buffer that collects scan results and flushes to main thread on a timer.
+private final class ScanBuffer: @unchecked Sendable {
+    private var entries: [FileEntry] = []
+    private var timer: DispatchSourceTimer?
+    private let onFlush: @Sendable ([FileEntry], Bool) -> Void
+    private let queue = DispatchQueue(label: "com.moremaid.scanbuffer")
+
+    init(onFlush: @escaping @Sendable ([FileEntry], Bool) -> Void) {
+        self.onFlush = onFlush
+        let t = DispatchSource.makeTimerSource(queue: queue)
+        t.schedule(deadline: .now() + 0.5, repeating: 0.5)
+        t.setEventHandler { [weak self] in
+            self?.tick()
+        }
+        t.resume()
+        self.timer = t
+    }
+
+    func append(_ batch: [FileEntry]) {
+        queue.async { self.entries.append(contentsOf: batch) }
+    }
+
+    func finish() {
+        queue.async {
+            self.timer?.cancel()
+            self.timer = nil
+            let files = self.entries
+            self.entries = []
+            self.onFlush(files, true)
+        }
+    }
+
+    private func tick() {
+        guard !entries.isEmpty else { return }
+        let files = entries
+        entries = []
+        onFlush(files, false)
+    }
+}
+
 struct DirectoryWindowView: View {
     let directoryPath: String
     let initialFilePath: String?
@@ -426,6 +466,16 @@ struct DirectoryWindowView: View {
                     .lineLimit(1)
                     .truncationMode(.middle)
                 Spacer(minLength: 0)
+                if isScanning {
+                    HStack(spacing: 4) {
+                        ProgressView()
+                            .controlSize(.mini)
+                        Text("Indexing \(projectFiles.count) files…")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                            .monospacedDigit()
+                    }
+                }
             }
             .padding(.horizontal, 12)
             .padding(.vertical, 3)
@@ -886,20 +936,30 @@ struct DirectoryWindowView: View {
         scanGeneration += 1
         let generation = scanGeneration
         projectFiles = []
+        print("[scanFiles] starting generation \(generation) for \(directoryPath)")
 
         // Load saved/default file immediately — no waiting for full scan
         tryLoadInitialFile()
 
-        // Full background scan for Quick Open
-        FileScanner.scanBatched(directory: directoryPath, filter: .allFiles, batchSize: 200) { batch, done in
+        // Buffer scan results, flush to UI every 0.5s
+        let buffer = ScanBuffer { [self] files, done in
             DispatchQueue.main.async {
-                guard generation == scanGeneration else { return }
-                projectFiles.append(contentsOf: batch)
+                guard generation == scanGeneration else {
+                    print("[scanFiles] dropping batch (gen \(generation) != current \(scanGeneration))")
+                    return
+                }
+                projectFiles.append(contentsOf: files)
                 if done {
                     isScanning = false
+                    print("[scanFiles] complete: \(projectFiles.count) files (gen \(generation))")
                     activityStore.seedKnownPaths(projectFiles)
                 }
             }
+        }
+
+        FileScanner.scanBatched(directory: directoryPath, filter: .allFiles, batchSize: 500) { batch, done in
+            buffer.append(batch)
+            if done { buffer.finish() }
         }
     }
 

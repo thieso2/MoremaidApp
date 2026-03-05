@@ -232,6 +232,15 @@ struct QuickOpenView: View {
             browseMode = browseMode == .directory ? .flat : .directory
             selectedIndex = 0
         }
+        .onChange(of: files.count) {
+            // Clamp selection when file list grows/shrinks during scan
+            let count = browseMode == .flat
+                ? min(flatResults.count, 50)
+                : min(directoryEntries.count, 50)
+            if selectedIndex >= count {
+                selectedIndex = max(0, count - 1)
+            }
+        }
         .onAppear {
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
                 isSearchFocused = true

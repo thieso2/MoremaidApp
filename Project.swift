@@ -11,8 +11,8 @@ let project = Project(
             deploymentTargets: .macOS("15.0"),
             infoPlist: .extendingDefault(with: [
                 "CFBundleDisplayName": "Moremaid",
-                "CFBundleShortVersionString": "0.4.0",
-                "CFBundleVersion": "8",
+                "CFBundleShortVersionString": "0.4.1",
+                "CFBundleVersion": "9",
                 "NSHumanReadableCopyright": "Copyright \u{00A9} 2026 Thies C. Arntzen",
                 "SUFeedURL": "https://thieso2.github.io/MoremaidApp/appcast.xml",
                 "SUPublicEDKey": "yrFdJunpoYLR83/TkZPyh2b7Pt5WCm2+XIhzTVL4T7I=",
@@ -133,8 +133,8 @@ let project = Project(
             bundleId: "de.tmp8.moremaid.quicklook",
             deploymentTargets: .macOS("15.0"),
             infoPlist: .extendingDefault(with: [
-                "CFBundleShortVersionString": "0.4.0",
-                "CFBundleVersion": "8",
+                "CFBundleShortVersionString": "0.4.1",
+                "CFBundleVersion": "9",
                 "NSExtension": .dictionary([
                     "NSExtensionPointIdentifier": "com.apple.quicklook.preview",
                     "NSExtensionPrincipalClass": "$(PRODUCT_MODULE_NAME).PreviewProvider",

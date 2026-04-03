@@ -37,6 +37,7 @@ enum DirEntry: Identifiable {
 
 struct QuickOpenView: View {
     let files: [FileEntry]
+    let totalFileCount: Int
     let isScanning: Bool
     let onSelect: (FileEntry) -> Void
     let onDismiss: () -> Void
@@ -364,21 +365,32 @@ struct QuickOpenView: View {
 
             Spacer()
 
-            if browseMode == .flat {
-                let count = flatResults.count
-                Text("\(count) file\(count == 1 ? "" : "s")")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-            } else {
-                let fileCount = directoryEntries.filter { !$0.isFolder }.count
-                let dirCount = directoryEntries.filter { $0.isFolder }.count
-                Text("\(fileCount) files\(dirCount > 0 ? ", \(dirCount) dirs" : "")")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-            }
+            fileCountLabel
+                .font(.caption)
+                .foregroundStyle(.secondary)
         }
         .padding(.horizontal, 12)
         .padding(.vertical, 6)
+    }
+
+    private var fileCountLabel: Text {
+        let visibleCount: Int
+        let dirCount: Int
+        if browseMode == .flat {
+            visibleCount = flatResults.count
+            dirCount = 0
+        } else {
+            visibleCount = directoryEntries.filter { !$0.isFolder }.count
+            dirCount = directoryEntries.filter { $0.isFolder }.count
+        }
+        var label = "\(visibleCount) file\(visibleCount == 1 ? "" : "s")"
+        if dirCount > 0 {
+            label += ", \(dirCount) dir\(dirCount == 1 ? "" : "s")"
+        }
+        if markdownOnly, totalFileCount != visibleCount {
+            label += " of \(totalFileCount)"
+        }
+        return Text(label)
     }
 
     // MARK: - Actions

@@ -580,6 +580,19 @@ struct WebView: NSViewRepresentable {
                 let basePath = baseDir.hasSuffix("/") ? baseDir : baseDir + "/"
                 if path.hasPrefix(basePath) || path == baseDir {
                     if FileManager.default.fileExists(atPath: path) {
+                        // Only handle text files in Moremaid; open everything else with the system default app
+                        let fileURL = URL(fileURLWithPath: path)
+                        let ext = fileURL.pathExtension.lowercased()
+                        let isTextFile = isMarkdownFile(path)
+                            || LanguageMaps.extensionToLanguage[ext] != nil
+                            || LanguageMaps.filenameToLanguage[fileURL.lastPathComponent] != nil
+                            || UTType(filenameExtension: ext)?.conforms(to: .text) == true
+                        if !isTextFile {
+                            print("[moremaid]   → opening in external app: \(path)")
+                            NSWorkspace.shared.open(fileURL)
+                            return .cancel
+                        }
+
                         let fragment = url.fragment
                         if isCmdClick {
                             print("[moremaid]   → opening in new tab: \(path)\(fragment.map { "#\($0)" } ?? "")")

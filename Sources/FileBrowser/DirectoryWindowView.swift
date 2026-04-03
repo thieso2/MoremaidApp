@@ -309,6 +309,7 @@ struct DirectoryWindowView: View {
             VStack {
                 QuickOpenView(
                     files: projectFiles,
+                    totalFileCount: projectFiles.count,
                     isScanning: isScanning,
                     onSelect: { file in
                         selectedFile = file

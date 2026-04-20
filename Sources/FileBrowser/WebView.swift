@@ -579,18 +579,22 @@ struct WebView: NSViewRepresentable {
                 }
                 let basePath = baseDir.hasSuffix("/") ? baseDir : baseDir + "/"
                 if path.hasPrefix(basePath) || path == baseDir {
-                    if FileManager.default.fileExists(atPath: path) {
-                        // Only handle text files in Moremaid; open everything else with the system default app
+                    var isDir: ObjCBool = false
+                    if FileManager.default.fileExists(atPath: path, isDirectory: &isDir) {
+                        // Directories navigate within Moremaid (auto-index), not Finder
                         let fileURL = URL(fileURLWithPath: path)
-                        let ext = fileURL.pathExtension.lowercased()
-                        let isTextFile = isMarkdownFile(path)
-                            || LanguageMaps.extensionToLanguage[ext] != nil
-                            || LanguageMaps.filenameToLanguage[fileURL.lastPathComponent] != nil
-                            || UTType(filenameExtension: ext)?.conforms(to: .text) == true
-                        if !isTextFile {
-                            print("[moremaid]   → opening in external app: \(path)")
-                            NSWorkspace.shared.open(fileURL)
-                            return .cancel
+                        if !isDir.boolValue {
+                            // Only handle text files in Moremaid; open everything else with the system default app
+                            let ext = fileURL.pathExtension.lowercased()
+                            let isTextFile = isMarkdownFile(path)
+                                || LanguageMaps.extensionToLanguage[ext] != nil
+                                || LanguageMaps.filenameToLanguage[fileURL.lastPathComponent] != nil
+                                || UTType(filenameExtension: ext)?.conforms(to: .text) == true
+                            if !isTextFile {
+                                print("[moremaid]   → opening in external app: \(path)")
+                                NSWorkspace.shared.open(fileURL)
+                                return .cancel
+                            }
                         }
 
                         let fragment = url.fragment

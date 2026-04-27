@@ -71,6 +71,9 @@ struct DirectoryWindowView: View {
     /// before the WebView's scroll finishes.
     @State private var clickLockUntil: Date = .distantPast
     @State private var tocScrollTimer: Timer?
+    @State private var isEditing = false
+    @State private var editorText = ""
+    @State private var editorOriginalText = ""
     @State private var autoIndexTimer: Timer?
     @State private var lastAutoIndexHash: Int?
     @State private var showActivityFeed = false
@@ -147,7 +150,8 @@ struct DirectoryWindowView: View {
     }
 
     private var windowTitle: String {
-        selectedFile?.relativePath ?? directoryName
+        let base = selectedFile?.relativePath ?? directoryName
+        return isDirty ? "\u{2022} \(base)" : base
     }
 
     private var windowSubtitle: String {
@@ -164,7 +168,14 @@ struct DirectoryWindowView: View {
                 sidebarPanel
                     .transition(.move(edge: .leading).combined(with: .opacity))
             }
-            webViewLayer
+            ZStack {
+                webViewLayer
+                    .opacity(isEditing ? 0 : 1) // keep WebView mounted to preserve scroll
+                if isEditing {
+                    SourceEditorView(text: $editorText)
+                        .background(.background)
+                }
+            }
                 .overlay { placeholderOverlay }
                 .overlay { quickOpenOverlay }
                 .overlay(alignment: .top) { findBarOverlay }
@@ -231,6 +242,18 @@ struct DirectoryWindowView: View {
             .onReceive(NotificationCenter.default.publisher(for: .exportPDF)) { _ in
                 guard isKeyWindow, selectedFile != nil else { return }
                 webViewStore.exportPDF()
+            }
+            .onReceive(NotificationCenter.default.publisher(for: .openInExternalEditor)) { _ in
+                guard isKeyWindow, let file = selectedFile, !isAutoIndex(file) else { return }
+                openInExternalEditor(file.absolutePath)
+            }
+            .onReceive(NotificationCenter.default.publisher(for: .toggleSourceEdit)) { _ in
+                guard isKeyWindow else { return }
+                toggleSourceEdit()
+            }
+            .onReceive(NotificationCenter.default.publisher(for: .saveFile)) { _ in
+                guard isKeyWindow, isEditing else { return }
+                saveEditorText()
             }
             .onReceive(NotificationCenter.default.publisher(for: .settingsChanged)) { _ in
                 handleSettingsChanged()
@@ -485,6 +508,47 @@ struct DirectoryWindowView: View {
         }
     }
 
+    // MARK: - Source Editor
+
+    private var isDirty: Bool { isEditing && editorText != editorOriginalText }
+
+    private var canEditSelected: Bool {
+        guard let file = selectedFile, !isAutoIndex(file) else { return false }
+        return FileManager.default.isWritableFile(atPath: file.absolutePath)
+            || FileManager.default.fileExists(atPath: file.absolutePath)
+    }
+
+    private func toggleSourceEdit() {
+        if isEditing {
+            // Save on exit if there are pending changes.
+            if isDirty { saveEditorText() }
+            isEditing = false
+            editorText = ""
+            editorOriginalText = ""
+        } else {
+            guard let file = selectedFile, !isAutoIndex(file) else { return }
+            guard let content = try? String(contentsOfFile: file.absolutePath, encoding: .utf8) else { return }
+            editorText = content
+            editorOriginalText = content
+            isEditing = true
+        }
+    }
+
+    private func saveEditorText() {
+        guard let file = selectedFile, !isAutoIndex(file) else { return }
+        do {
+            try editorText.write(toFile: file.absolutePath, atomically: true, encoding: .utf8)
+            editorOriginalText = editorText
+            // Refresh the WebView's cached render and the navigator's heading
+            // list so they're current when the user toggles back.
+            webViewStore.reload()
+            headingsCache[file.relativePath] = HeadingParser.extractHeadings(from: editorText)
+        } catch {
+            print("[moremaid] save failed: \(error)")
+            NSSound.beep()
+        }
+    }
+
     // MARK: - Sidebar
 
     private var sidebarPanel: some View {
@@ -578,6 +642,17 @@ struct DirectoryWindowView: View {
                 Label("Find in Files", systemImage: "doc.text.magnifyingglass")
             }
             .help("Find in Files (\u{21E7}\u{2318}F)")
+        }
+
+        ToolbarItem(placement: .primaryAction) {
+            Button {
+                toggleSourceEdit()
+            } label: {
+                Label(isEditing ? "Done" : "Edit",
+                      systemImage: isEditing ? "eye" : "square.and.pencil")
+            }
+            .disabled(!canEditSelected)
+            .help(isEditing ? "View Rendered (\u{21E7}\u{2318}E)" : "Edit Source (\u{21E7}\u{2318}E)")
         }
 
         ToolbarItem(placement: .primaryAction) {
@@ -703,6 +778,13 @@ struct DirectoryWindowView: View {
 
     private func handleFileChange() {
         guard let file = selectedFile else { return }
+        // Save and exit any in-progress edit before loading the new target.
+        if isEditing {
+            if isDirty { saveEditorText() }
+            isEditing = false
+            editorText = ""
+            editorOriginalText = ""
+        }
         activityStore.markSeenByPath(file.absolutePath)
 
         if isNavigatingHistory {

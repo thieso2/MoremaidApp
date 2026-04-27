@@ -13,8 +13,13 @@ struct SingleFileView: View {
     @FocusState private var findFieldFocused: Bool
     @AppStorage("showStatusBar") private var showStatusBar = true
     @Environment(\.controlActiveState) private var controlActiveState
+    @State private var isEditing = false
+    @State private var editorText = ""
+    @State private var editorOriginalText = ""
 
     private var isKeyWindow: Bool { controlActiveState == .key }
+    private var isDirty: Bool { isEditing && editorText != editorOriginalText }
+    private var canEdit: Bool { isMarkdownFile(filePath) }
 
     private var fileName: String {
         (filePath as NSString).lastPathComponent
@@ -25,10 +30,17 @@ struct SingleFileView: View {
     }
 
     var body: some View {
-        webViewLayer
+        ZStack {
+            webViewLayer
+                .opacity(isEditing ? 0 : 1)
+            if isEditing {
+                SourceEditorView(text: $editorText)
+                    .background(.background)
+            }
+        }
             .overlay(alignment: .top) { findBarOverlay }
             .safeAreaInset(edge: .bottom, spacing: 0) { singleFileStatusBar }
-            .navigationTitle(abbreviatePath(filePath))
+            .navigationTitle((isDirty ? "\u{2022} " : "") + abbreviatePath(filePath))
             .navigationSubtitle(windowSubtitle)
             .navigationDocument(URL(fileURLWithPath: filePath))
             .toolbar { toolbarContent }
@@ -62,6 +74,18 @@ struct SingleFileView: View {
             .onReceive(NotificationCenter.default.publisher(for: .exportPDF)) { _ in
                 guard isKeyWindow else { return }
                 webViewStore.exportPDF()
+            }
+            .onReceive(NotificationCenter.default.publisher(for: .openInExternalEditor)) { _ in
+                guard isKeyWindow else { return }
+                openInExternalEditor(filePath)
+            }
+            .onReceive(NotificationCenter.default.publisher(for: .toggleSourceEdit)) { _ in
+                guard isKeyWindow else { return }
+                toggleSourceEdit()
+            }
+            .onReceive(NotificationCenter.default.publisher(for: .saveFile)) { _ in
+                guard isKeyWindow, isEditing else { return }
+                saveEditorText()
             }
             .onReceive(NotificationCenter.default.publisher(for: .settingsChanged)) { _ in
                 handleSettingsChanged()
@@ -193,6 +217,15 @@ struct SingleFileView: View {
     private var toolbarContent: some ToolbarContent {
         ToolbarItemGroup(placement: .primaryAction) {
             Button {
+                toggleSourceEdit()
+            } label: {
+                Label(isEditing ? "Done" : "Edit",
+                      systemImage: isEditing ? "eye" : "square.and.pencil")
+            }
+            .disabled(!canEdit)
+            .help(isEditing ? "View Rendered (\u{21E7}\u{2318}E)" : "Edit Source (\u{21E7}\u{2318}E)")
+
+            Button {
                 webViewStore.copyMarkdown()
                 copyFeedback = true
                 DispatchQueue.main.asyncAfter(deadline: .now() + 2) { copyFeedback = false }
@@ -200,6 +233,35 @@ struct SingleFileView: View {
                 Label(copyFeedback ? "Copied!" : "Copy Markdown", systemImage: "doc.on.doc")
             }
             .help("Copy raw markdown to clipboard")
+        }
+    }
+
+    // MARK: - Source Editor
+
+    private func toggleSourceEdit() {
+        if isEditing {
+            if isDirty { saveEditorText() }
+            isEditing = false
+            editorText = ""
+            editorOriginalText = ""
+        } else {
+            guard canEdit else { return }
+            guard let content = try? String(contentsOfFile: filePath, encoding: .utf8) else { return }
+            editorText = content
+            editorOriginalText = content
+            isEditing = true
+        }
+    }
+
+    private func saveEditorText() {
+        guard canEdit else { return }
+        do {
+            try editorText.write(toFile: filePath, atomically: true, encoding: .utf8)
+            editorOriginalText = editorText
+            webViewStore.reload()
+        } catch {
+            print("[moremaid] save failed: \(error)")
+            NSSound.beep()
         }
     }
 

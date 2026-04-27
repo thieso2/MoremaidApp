@@ -54,3 +54,29 @@ func isMarkdownFile(_ path: String) -> Bool {
     let ext = (path as NSString).pathExtension.lowercased()
     return Constants.markdownExtensions.contains(ext)
 }
+
+// MARK: - External Editor
+
+#if canImport(AppKit)
+import AppKit
+
+/// Opens the file in the user's preferred external editor — i.e. the first
+/// LaunchServices candidate that isn't Moremaid itself, so we don't loop back
+/// when Moremaid is registered as the default `.md` handler. Falls back to
+/// `NSWorkspace.shared.open(url)` if no other handler is registered.
+@MainActor
+func openInExternalEditor(_ path: String) {
+    let url = URL(fileURLWithPath: path)
+    let myBundle = Bundle.main.bundleIdentifier
+    let candidates = NSWorkspace.shared.urlsForApplications(toOpen: url)
+    let editor = candidates.first { appURL in
+        Bundle(url: appURL)?.bundleIdentifier != myBundle
+    }
+    let cfg = NSWorkspace.OpenConfiguration()
+    if let editor {
+        NSWorkspace.shared.open([url], withApplicationAt: editor, configuration: cfg, completionHandler: nil)
+    } else {
+        NSWorkspace.shared.open(url)
+    }
+}
+#endif

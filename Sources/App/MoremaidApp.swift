@@ -274,6 +274,15 @@ struct AppCommands: Commands {
             .keyboardShortcut("t", modifiers: .command)
         }
 
+        CommandGroup(replacing: .saveItem) {
+            Button {
+                NotificationCenter.default.post(name: .saveFile, object: nil)
+            } label: {
+                Label("Save", systemImage: "square.and.arrow.down")
+            }
+            .keyboardShortcut("s", modifiers: .command)
+        }
+
         CommandGroup(replacing: .printItem) {
             Button {
                 NotificationCenter.default.post(name: .exportPDF, object: nil)
@@ -281,6 +290,19 @@ struct AppCommands: Commands {
                 Label("Export PDF...", systemImage: "arrow.down.doc")
             }
             .keyboardShortcut("p", modifiers: .command)
+
+            Button {
+                NotificationCenter.default.post(name: .toggleSourceEdit, object: nil)
+            } label: {
+                Label("Edit Source", systemImage: "square.and.pencil")
+            }
+            .keyboardShortcut("e", modifiers: [.command, .shift])
+
+            Button {
+                NotificationCenter.default.post(name: .openInExternalEditor, object: nil)
+            } label: {
+                Label("Edit in External Editor", systemImage: "pencil")
+            }
         }
 
         CommandGroup(replacing: .textEditing) {

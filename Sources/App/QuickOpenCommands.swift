@@ -22,6 +22,9 @@ extension Notification.Name {
     static let toggleStatusBar = Notification.Name("toggleStatusBar")
     static let searchInFiles = Notification.Name("searchInFiles")
     static let toggleActivityFeed = Notification.Name("toggleActivityFeed")
+    static let openInExternalEditor = Notification.Name("openInExternalEditor")
+    static let toggleSourceEdit = Notification.Name("toggleSourceEdit")
+    static let saveFile = Notification.Name("saveFile")
 }
 
 /// Installs a local key event monitor for shortcuts that work regardless of focus.

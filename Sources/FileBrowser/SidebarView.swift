@@ -116,14 +116,44 @@ struct SidebarView: View {
         SidebarTreeBuilder.build(files: filteredFiles, sort: sort)
     }
 
+    /// While filtering, force-expand the tree so every match is visible —
+    /// without touching the user's persisted expansion state. When filter
+    /// clears, the tree snaps back to whatever the user had open.
+    private var effectiveExpansion: (folders: Set<String>, files: Set<String>, ignoreCollapsedHeadings: Bool) {
+        guard !search.isEmpty else {
+            return (expandedFolders, expandedFiles, false)
+        }
+        var folders = expandedFolders
+        var files = expandedFiles
+        let q = search.lowercased()
+        for file in filteredFiles {
+            // Expand every ancestor folder so the matching file row is visible.
+            let parts = file.relativePath.split(separator: "/").map(String.init)
+            if parts.count > 1 {
+                for i in 0..<(parts.count - 1) {
+                    folders.insert(parts[0...i].joined(separator: "/"))
+                }
+            }
+            // If the match is on a heading text, expand the file itself too.
+            if let cached = headingsCache[file.relativePath],
+               cached.contains(where: { $0.text.lowercased().contains(q) }) {
+                files.insert(file.relativePath)
+            }
+        }
+        return (folders, files, true)
+    }
+
     /// Pre-compute the visible row list. Re-runs when state changes; cheap
     /// because we only enumerate expanded subtrees.
     private var flatRows: [SidebarRow] {
         var rows: [SidebarRow] = []
+        let exp = effectiveExpansion
 
         func walkHeading(_ heading: SidebarHeadingNode, depth: Int, fileRelPath: String, isCurrentFile: Bool) {
             let key = headingKey(file: fileRelPath, id: heading.id)
-            let collapsed = collapsedHeadings.contains(key)
+            // While filtering, ignore explicit heading collapses so all sub-
+            // sections are visible (matches may be nested under a collapsed one).
+            let collapsed = !exp.ignoreCollapsedHeadings && collapsedHeadings.contains(key)
             let isActive = isCurrentFile && heading.id == currentHeadingID
             rows.append(.heading(
                 node: heading,
@@ -143,7 +173,7 @@ struct SidebarView: View {
         func walk(_ node: SidebarNode, depth: Int) {
             switch node {
             case .folder(let path, let name, let children):
-                let isOpen = expandedFolders.contains(path)
+                let isOpen = exp.folders.contains(path)
                 rows.append(.folder(path: path, name: name, depth: depth, isOpen: isOpen))
                 if isOpen {
                     for child in children { walk(child, depth: depth + 1) }
@@ -151,7 +181,7 @@ struct SidebarView: View {
             case .file(let entry):
                 let cached = headingsCache[entry.relativePath]
                 let hasChildren = entry.isMarkdown // markdown rows always show a chevron
-                let isOpen = expandedFiles.contains(entry.relativePath) && hasChildren
+                let isOpen = exp.files.contains(entry.relativePath) && hasChildren
                 let isSelected = selectedFile?.relativePath == entry.relativePath
                 rows.append(.file(
                     entry: entry,
@@ -190,9 +220,6 @@ struct SidebarView: View {
         .onChange(of: directoryPath) {
             didLoadExpanded = false
             loadExpandedState()
-        }
-        .onChange(of: search) { _, newValue in
-            autoExpandForSearch(newValue)
         }
     }
 
@@ -388,33 +415,6 @@ struct SidebarView: View {
         if !expandedFiles.contains(file.relativePath) {
             expandedFiles.insert(file.relativePath)
             changed = true
-        }
-        if changed { saveExpandedState() }
-    }
-
-    /// When the user types a query that matches a cached heading text,
-    /// auto-expand the file so the matching headings are visible.
-    private func autoExpandForSearch(_ query: String) {
-        guard !query.isEmpty else { return }
-        let q = query.lowercased()
-        var changed = false
-        for (relPath, headings) in headingsCache {
-            guard headings.contains(where: { $0.text.lowercased().contains(q) }) else { continue }
-            if !expandedFiles.contains(relPath) {
-                expandedFiles.insert(relPath)
-                changed = true
-            }
-            // Also expand ancestor folders so the file row is visible.
-            let parts = relPath.split(separator: "/").map(String.init)
-            if parts.count > 1 {
-                for i in 0..<(parts.count - 1) {
-                    let ancestor = parts[0...i].joined(separator: "/")
-                    if !expandedFolders.contains(ancestor) {
-                        expandedFolders.insert(ancestor)
-                        changed = true
-                    }
-                }
-            }
         }
         if changed { saveExpandedState() }
     }

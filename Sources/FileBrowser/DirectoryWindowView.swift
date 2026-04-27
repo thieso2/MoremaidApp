@@ -169,56 +169,16 @@ struct DirectoryWindowView: View {
                 sidebarPanel
                     .transition(.move(edge: .leading).combined(with: .opacity))
             }
-            ZStack {
-                webViewLayer
-                    .opacity(isEditing ? 0 : 1) // keep WebView mounted to preserve scroll
-                if isEditing {
-                    SourceEditorView(text: $editorText, fontSize: CGFloat(editorFontSize))
-                        .background(.background)
-                }
-            }
-                .overlay { placeholderOverlay }
-                .overlay { quickOpenOverlay }
-                .overlay(alignment: .top) { findBarOverlay }
-                .safeAreaInset(edge: .top, spacing: 0) { breadcrumbBar }
-                .safeAreaInset(edge: .bottom, spacing: 0) { statusBar }
+            mainPane
             if showSearchPanel {
                 Divider()
-                SearchInFilesView(
-                    files: projectFiles,
-                    directoryPath: directoryPath,
-                    searchQuery: $searchInFilesQuery,
-                    isPresented: $showSearchPanel,
-                    searchResults: $searchInFilesResults,
-                    activeFileIndex: $sifFileIndex,
-                    activeMatchIndex: $sifMatchIndex,
-                    onSelectResult: { file, query, lineNumber, matchIndex in
-                        handleSearchInFilesSelect(file: file, query: query, matchIndex: matchIndex)
-                    },
-                    onNext: { handleSearchInFilesNext() },
-                    onPrevious: { handleSearchInFilesPrevious() },
-                    onFirst: {
-                        guard !searchInFilesResults.isEmpty else { return }
-                        sifFileIndex = 0
-                        sifMatchIndex = 0
-                        navigateToSifMatch()
-                    }
-                )
-                .transition(.move(edge: .trailing).combined(with: .opacity))
+                searchInFilesPane
+                    .transition(.move(edge: .trailing).combined(with: .opacity))
             }
             if showActivityFeed {
                 Divider()
-                ActivityFeedView(
-                    activityStore: activityStore,
-                    isPresented: $showActivityFeed,
-                    onSelectFile: { file in
-                        selectedFile = file
-                    },
-                    onOpenInNewTab: { file in
-                        openInNewTab(path: file.absolutePath, fragment: nil)
-                    }
-                )
-                .transition(.move(edge: .trailing).combined(with: .opacity))
+                activityFeedPane
+                    .transition(.move(edge: .trailing).combined(with: .opacity))
             }
         }
         .onChange(of: selectedFile) { handleFileChange() }
@@ -231,6 +191,58 @@ struct DirectoryWindowView: View {
                 sifHighlightedFile = nil
             }
         }
+    }
+
+    private var mainPane: some View {
+        ZStack {
+            webViewLayer
+                .opacity(isEditing ? 0 : 1) // keep WebView mounted to preserve scroll
+            if isEditing {
+                SourceEditorView(text: $editorText, fontSize: CGFloat(editorFontSize))
+                    .background(.background)
+            }
+        }
+        .overlay { placeholderOverlay }
+        .overlay { quickOpenOverlay }
+        .overlay(alignment: .top) { findBarOverlay }
+        .safeAreaInset(edge: .top, spacing: 0) { breadcrumbBar }
+        .safeAreaInset(edge: .bottom, spacing: 0) { statusBar }
+    }
+
+    private var searchInFilesPane: some View {
+        SearchInFilesView(
+            files: projectFiles,
+            directoryPath: directoryPath,
+            searchQuery: $searchInFilesQuery,
+            isPresented: $showSearchPanel,
+            searchResults: $searchInFilesResults,
+            activeFileIndex: $sifFileIndex,
+            activeMatchIndex: $sifMatchIndex,
+            onSelectResult: { file, query, _, matchIndex in
+                handleSearchInFilesSelect(file: file, query: query, matchIndex: matchIndex)
+            },
+            onNext: { handleSearchInFilesNext() },
+            onPrevious: { handleSearchInFilesPrevious() },
+            onFirst: {
+                guard !searchInFilesResults.isEmpty else { return }
+                sifFileIndex = 0
+                sifMatchIndex = 0
+                navigateToSifMatch()
+            }
+        )
+    }
+
+    private var activityFeedPane: some View {
+        ActivityFeedView(
+            activityStore: activityStore,
+            isPresented: $showActivityFeed,
+            onSelectFile: { file in
+                selectedFile = file
+            },
+            onOpenInNewTab: { file in
+                openInNewTab(path: file.absolutePath, fragment: nil)
+            }
+        )
     }
 
     private var webViewLayer: some View {

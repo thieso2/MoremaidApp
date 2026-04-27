@@ -12,6 +12,7 @@ struct SingleFileView: View {
     @State private var findTotal = 0
     @FocusState private var findFieldFocused: Bool
     @AppStorage("showStatusBar") private var showStatusBar = true
+    @AppStorage("editorFontSize") private var editorFontSize: Double = 13
     @Environment(\.controlActiveState) private var controlActiveState
     @State private var isEditing = false
     @State private var editorText = ""
@@ -34,7 +35,7 @@ struct SingleFileView: View {
             webViewLayer
                 .opacity(isEditing ? 0 : 1)
             if isEditing {
-                SourceEditorView(text: $editorText)
+                SourceEditorView(text: $editorText, fontSize: CGFloat(editorFontSize))
                     .background(.background)
             }
         }

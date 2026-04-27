@@ -15,6 +15,7 @@ struct PreferencesView: View {
     @AppStorage("autoReload") private var autoReload = true
     @AppStorage("sidebarSort") private var sidebarSort: String = SidebarSort.foldersFirst.rawValue
     @AppStorage("sidebarFontSize") private var sidebarFontSize: Double = 13
+    @AppStorage("editorFontSize") private var editorFontSize: Double = 13
     @State private var launchAtLogin = SMAppService.mainApp.status == .enabled
     @State private var cliStatus = CLIInstaller.checkStatus()
     @State private var cliError: String?
@@ -69,6 +70,23 @@ struct PreferencesView: View {
                     .buttonStyle(.bordered)
                     .controlSize(.small)
                 Button("Reset") { sidebarFontSize = 13 }
+                    .buttonStyle(.bordered)
+                    .controlSize(.small)
+            }
+
+            HStack {
+                Text("Editor Font Size")
+                Spacer()
+                Button("-") { editorFontSize = max(9, editorFontSize - 1) }
+                    .buttonStyle(.bordered)
+                    .controlSize(.small)
+                Text("\(Int(editorFontSize)) pt")
+                    .frame(width: 50, alignment: .center)
+                    .monospacedDigit()
+                Button("+") { editorFontSize = min(28, editorFontSize + 1) }
+                    .buttonStyle(.bordered)
+                    .controlSize(.small)
+                Button("Reset") { editorFontSize = 13 }
                     .buttonStyle(.bordered)
                     .controlSize(.small)
             }

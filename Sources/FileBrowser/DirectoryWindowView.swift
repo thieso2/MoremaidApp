@@ -81,6 +81,7 @@ struct DirectoryWindowView: View {
     @State private var fileWatcher = FileWatcher()
     @AppStorage("showBreadcrumb") private var showBreadcrumb = true
     @AppStorage("showStatusBar") private var showStatusBar = true
+    @AppStorage("editorFontSize") private var editorFontSize: Double = 13
     @Environment(\.controlActiveState) private var controlActiveState
 
     // MARK: - History
@@ -172,7 +173,7 @@ struct DirectoryWindowView: View {
                 webViewLayer
                     .opacity(isEditing ? 0 : 1) // keep WebView mounted to preserve scroll
                 if isEditing {
-                    SourceEditorView(text: $editorText)
+                    SourceEditorView(text: $editorText, fontSize: CGFloat(editorFontSize))
                         .background(.background)
                 }
             }

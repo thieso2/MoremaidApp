@@ -432,8 +432,15 @@ enum PageScripts {
 
     function getCurrentHeadingId() {
         var headings = document.querySelectorAll('h1, h2, h3, h4, h5, h6');
-        var current = '';
+        if (headings.length === 0) return '';
         var scrollY = window.scrollY;
+        // If we're at (or within a couple px of) the bottom of the page, the
+        // last heading is "current" even though it can't physically scroll to
+        // the top — otherwise tail headings near the document end never light
+        // up in the sidebar.
+        var atBottom = (window.innerHeight + scrollY) >= (document.body.scrollHeight - 4);
+        if (atBottom) return headings[headings.length - 1].id;
+        var current = '';
         for (var i = 0; i < headings.length; i++) {
             if (headings[i].getBoundingClientRect().top + scrollY <= scrollY + 60) {
                 current = headings[i].id;

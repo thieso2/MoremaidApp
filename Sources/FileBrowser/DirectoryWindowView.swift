@@ -57,15 +57,19 @@ struct DirectoryWindowView: View {
     @State private var findCurrent = 0
     @State private var findTotal = 0
     @FocusState private var findFieldFocused: Bool
-    @State private var showTOC = false
+    @AppStorage("showSidebar") private var showSidebar = false
     @State private var showSearchPanel = false
     @State private var searchInFilesQuery = ""
     @State private var searchInFilesResults: [SearchResult] = []
     @State private var sifFileIndex = -1
     @State private var sifMatchIndex = -1
     @State private var sifHighlightedFile: String?
-    @State private var headings: [WebViewStore.HeadingEntry] = []
+    @State private var headingsCache: [String: [WebViewStore.HeadingEntry]] = [:]
     @State private var currentHeadingID = ""
+    /// While a navigator click is settling, the scroll-tracking timer skips
+    /// updates so the highlight doesn't drift away from the clicked heading
+    /// before the WebView's scroll finishes.
+    @State private var clickLockUntil: Date = .distantPast
     @State private var tocScrollTimer: Timer?
     @State private var autoIndexTimer: Timer?
     @State private var lastAutoIndexHash: Int?
@@ -117,6 +121,9 @@ struct DirectoryWindowView: View {
                     handleAnchorClick(anchor)
                 }
                 scanFiles()
+                if showSidebar {
+                    startTOCScrollTracking()
+                }
                 Task {
                     let stream = await fileWatcher.watch(directory: directoryPath)
                     for await event in stream {
@@ -153,8 +160,8 @@ struct DirectoryWindowView: View {
 
     private var contentView: some View {
         HStack(spacing: 0) {
-            if showTOC {
-                tocPanel
+            if showSidebar {
+                sidebarPanel
                     .transition(.move(edge: .leading).combined(with: .opacity))
             }
             webViewLayer
@@ -250,19 +257,13 @@ struct DirectoryWindowView: View {
             }
             .onReceive(NotificationCenter.default.publisher(for: .toggleTOC)) { _ in
                 guard isKeyWindow else { return }
-                withAnimation(.easeInOut(duration: 0.2)) { showTOC.toggle() }
-                if showTOC {
+                withAnimation(.easeInOut(duration: 0.2)) { showSidebar.toggle() }
+                if showSidebar {
                     refreshHeadings()
                     startTOCScrollTracking()
                 } else {
                     stopTOCScrollTracking()
                 }
-            }
-            .onReceive(NotificationCenter.default.publisher(for: .newTab)) { _ in
-                guard isKeyWindow else { return }
-                let filePath = selectedFile.flatMap { isAutoIndex($0) ? nil : $0.absolutePath }
-                appState.queueNewTab(target: .directory(path: directoryPath), selectedFile: filePath)
-                openAsTab()
             }
             .onReceive(NotificationCenter.default.publisher(for: .toggleBreadcrumb)) { _ in
                 guard isKeyWindow else { return }
@@ -484,70 +485,38 @@ struct DirectoryWindowView: View {
         }
     }
 
-    // MARK: - Table of Contents
+    // MARK: - Sidebar
 
-    private var tocPanel: some View {
-        HStack(spacing: 0) {
-            ScrollViewReader { proxy in
-                ScrollView {
-                    VStack(alignment: .leading, spacing: 0) {
-                        if headings.isEmpty {
-                            Text("No headings")
-                                .foregroundStyle(.tertiary)
-                                .font(.subheadline)
-                                .padding(16)
-                        } else {
-                            ForEach(headings) { heading in
-                                let isActive = heading.id == currentHeadingID
-                                Button {
-                                    Task { _ = await webViewStore.scrollToAnchor(heading.id) }
-                                } label: {
-                                    HStack {
-                                        Text(heading.text)
-                                            .font(heading.level == 1 ? .body : .callout)
-                                            .fontWeight(heading.level <= 2 ? .medium : .regular)
-                                            .foregroundStyle(isActive ? .primary : (heading.level <= 2 ? .primary : .secondary))
-                                            .lineLimit(1)
-                                            .truncationMode(.tail)
-                                        Spacer(minLength: 0)
-                                    }
-                                    .padding(.leading, CGFloat((heading.level - 1) * 14))
-                                    .padding(.vertical, 5)
-                                    .padding(.horizontal, 14)
-                                    .background(
-                                        isActive
-                                            ? RoundedRectangle(cornerRadius: 6).fill(.selection.opacity(0.3))
-                                            : nil
-                                    )
-                                    .contentShape(Rectangle())
-                                }
-                                .buttonStyle(.plain)
-                                .id(heading.id)
-                            }
-                        }
-                    }
-                    .padding(.vertical, 8)
-                }
-                .onChange(of: currentHeadingID) {
-                    if !currentHeadingID.isEmpty {
-                        withAnimation(.easeInOut(duration: 0.2)) {
-                            proxy.scrollTo(currentHeadingID, anchor: .center)
-                        }
-                    }
-                }
+    private var sidebarPanel: some View {
+        SidebarView(
+            directoryPath: directoryPath,
+            projectFiles: projectFiles,
+            selectedFile: $selectedFile,
+            headingsCache: $headingsCache,
+            currentHeadingID: currentHeadingID,
+            onScrollToAnchor: { anchor in
+                currentHeadingID = anchor
+                clickLockUntil = Date().addingTimeInterval(0.8)
+                Task { _ = await webViewStore.scrollToAnchor(anchor) }
+            },
+            onNavigateToFileAnchor: { fileRelPath, anchor in
+                guard let file = projectFiles.first(where: { $0.relativePath == fileRelPath }) else { return }
+                currentHeadingID = anchor
+                clickLockUntil = Date().addingTimeInterval(1.5)
+                webViewStore.pendingAnchor = anchor
+                selectedFile = file
             }
-            .frame(width: 220)
-            .frame(maxHeight: .infinity)
-            .background(.windowBackground)
-
-            Divider()
-        }
+        )
     }
-
 
     private func refreshHeadings() {
         Task {
-            headings = await webViewStore.getHeadings()
+            let fetched = await webViewStore.getHeadings()
+            if let file = selectedFile {
+                headingsCache[file.relativePath] = fetched
+            }
+            // Don't overwrite a click-induced selection that's still settling.
+            guard Date() >= clickLockUntil else { return }
             currentHeadingID = await webViewStore.getCurrentHeadingID()
         }
     }
@@ -556,7 +525,8 @@ struct DirectoryWindowView: View {
         stopTOCScrollTracking()
         tocScrollTimer = Timer.scheduledTimer(withTimeInterval: 0.5, repeats: true) { _ in
             Task { @MainActor in
-                guard showTOC else { return }
+                guard showSidebar else { return }
+                guard Date() >= clickLockUntil else { return }
                 let id = await webViewStore.getCurrentHeadingID()
                 if id != currentHeadingID {
                     currentHeadingID = id
@@ -588,17 +558,17 @@ struct DirectoryWindowView: View {
 
         ToolbarItem(placement: .primaryAction) {
             Button {
-                withAnimation(.easeInOut(duration: 0.2)) { showTOC.toggle() }
-                if showTOC {
+                withAnimation(.easeInOut(duration: 0.2)) { showSidebar.toggle() }
+                if showSidebar {
                     refreshHeadings()
                     startTOCScrollTracking()
                 } else {
                     stopTOCScrollTracking()
                 }
             } label: {
-                Label("Table of Contents", systemImage: "sidebar.left")
+                Label("Sidebar", systemImage: "sidebar.left")
             }
-            .help("Toggle Table of Contents (\u{21E7}\u{2318}T)")
+            .help("Toggle Sidebar (\u{21E7}\u{2318}T)")
         }
 
         ToolbarItem(placement: .primaryAction) {
@@ -715,23 +685,18 @@ struct DirectoryWindowView: View {
     // MARK: - New Tab / Window
 
     private func openInNewTab(path: String, fragment: String?) {
-        appState.queueNewTab(target: .directory(path: directoryPath), selectedFile: path)
-        openAsTab()
-    }
-
-    private func openInNewWindow(path: String, fragment: String?) {
-        appState.queueNewTab(target: .directory(path: directoryPath), selectedFile: path)
-        openWindow(id: "main")
-    }
-
-    private func openAsTab() {
+        let target: OpenTarget = .directory(path: directoryPath, initialFile: path)
         let sourceWindow = webViewStore.webView?.window
         let previousMode = sourceWindow?.tabbingMode
         sourceWindow?.tabbingMode = .preferred
-        openWindow(id: "main")
+        openWindow(value: target)
         if let previousMode {
-            sourceWindow?.tabbingMode = previousMode
+            DispatchQueue.main.async { sourceWindow?.tabbingMode = previousMode }
         }
+    }
+
+    private func openInNewWindow(path: String, fragment: String?) {
+        openWindow(value: OpenTarget.directory(path: directoryPath, initialFile: path))
     }
 
     // MARK: - Handlers
@@ -758,7 +723,7 @@ struct DirectoryWindowView: View {
 
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
             webViewStore.becomeFirstResponder()
-            if showTOC { refreshHeadings() }
+            if showSidebar { refreshHeadings() }
         }
     }
 
@@ -984,8 +949,9 @@ struct DirectoryWindowView: View {
             }
         }
 
-        // 3. Auto-index — show directory contents
-        selectedFile = makeAutoIndexEntry(for: directoryPath)
+        // 3. No README/default file — leave the main view empty and reveal
+        //    the navigator so the user can pick a file.
+        showSidebar = true
     }
 
     private func makeFileEntry(absolutePath path: String) -> FileEntry {

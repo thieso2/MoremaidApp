@@ -1,7 +1,7 @@
 import Sparkle
 import SwiftUI
 
-class AppDelegate: NSObject, NSApplicationDelegate {
+@MainActor class AppDelegate: NSObject, NSApplicationDelegate {
     let updaterController = SPUStandardUpdaterController(
         startingUpdater: true,
         updaterDelegate: nil,
@@ -96,15 +96,8 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             var isDir: ObjCBool = false
             FileManager.default.fileExists(atPath: path, isDirectory: &isDir)
             let target: OpenTarget = isDir.boolValue ? .directory(path: path) : .file(path: path)
-            appState.pendingTargets.append(target)
+            appState.openTarget(target)
         }
-        appState.windowsToOpen += urls.count
-        NotificationCenter.default.post(name: .openPendingTargets, object: nil)
-    }
-
-    func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool {
-        print("[AppDelegate] applicationShouldHandleReopen hasVisibleWindows=\(flag)")
-        return flag
     }
 }
 
@@ -112,7 +105,6 @@ class AppDelegate: NSObject, NSApplicationDelegate {
 struct MoremaidApp: App {
     @NSApplicationDelegateAdaptor(AppDelegate.self) var appDelegate
     @State private var appState = AppState()
-    @Environment(\.openWindow) private var openWindow
 
     init() {
         setbuf(stdout, nil)
@@ -121,13 +113,14 @@ struct MoremaidApp: App {
     }
 
     var body: some Scene {
-        WindowGroup(id: "main") {
-            WindowRootView()
+        WindowGroup(for: OpenTarget.self) { $target in
+            WindowRootView(target: $target)
                 .environment(appState)
                 .onAppear { appDelegate.appState = appState }
         }
         .defaultSize(width: 800, height: 600)
         .restorationBehavior(.disabled)
+        .defaultLaunchBehavior(.suppressed)
         .commands {
             AppCommands(appState: appState)
         }
@@ -139,16 +132,14 @@ struct MoremaidApp: App {
     }
 }
 
-/// Each window instance claims a pending tab or target.
+/// Renders the content for the bound `OpenTarget`. With `WindowGroup(for:)`
+/// SwiftUI manages window lifecycle, state restoration, and "focus existing
+/// window with this value" — no manual claim-queue / dismiss logic needed.
 struct WindowRootView: View {
+    @Binding var target: OpenTarget?
     @Environment(AppState.self) private var appState
     @Environment(\.openWindow) private var openWindow
-    @Environment(\.dismiss) private var dismiss
     @Environment(\.controlActiveState) private var controlActiveState
-    @State private var target: OpenTarget?
-    @State private var initialFilePath: String?
-    @State private var didSetup = false
-    @State private var windowReady = false
 
     private var isKeyWindow: Bool { controlActiveState == .key }
 
@@ -157,44 +148,24 @@ struct WindowRootView: View {
             switch target {
             case .file(let path):
                 SingleFileView(filePath: path)
-            case .directory(let path):
+            case .directory(let path, let initialFile):
                 DirectoryWindowView(
                     directoryPath: path,
-                    initialFilePath: initialFilePath
+                    initialFilePath: initialFile
                 )
-            case nil:
-                Color.clear
-                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+            case .empty, nil:
+                EmptyWindowPlaceholder()
             }
         }
-        .background(WindowFlickerGuard(isReady: windowReady))
         .task {
-            guard !didSetup else { return }
-            didSetup = true
-            print("[WindowRootView] .task pendingTabs=\(appState.pendingTabCount) pendingTargets=\(appState.pendingTargets.count)")
-
-            if let tab = appState.claimPendingTab() {
-                print("[WindowRootView]   claimed tab: \(tab.target.path)")
-                target = tab.target
-                initialFilePath = tab.selectedFile
-                windowReady = true
-                // Open windows for remaining pending tabs
-                let remaining = appState.pendingTabCount
-                for _ in 0..<remaining {
-                    openWindow(id: "main")
+            // Register a bridge so AppDelegate.application(_:open:) — and any
+            // other non-View context — can call into SwiftUI's openWindow.
+            // The first window to come up registers; if it goes away, the
+            // next one re-registers via this same .task.
+            if appState.openTargetHandler == nil {
+                appState.openTargetHandler = { [openWindow] target in
+                    openWindow(value: target)
                 }
-            } else if let pendingTarget = appState.claimPendingTarget() {
-                print("[WindowRootView]   claimed target: \(pendingTarget.path)")
-                target = pendingTarget
-                windowReady = true
-                // Open windows for remaining pending targets
-                let remainingTargets = appState.pendingTargets.count
-                for _ in 0..<remainingTargets {
-                    openWindow(id: "main")
-                }
-            } else {
-                print("[WindowRootView]   nothing to claim — dismissing")
-                dismiss()
             }
         }
         .onChange(of: controlActiveState) {
@@ -202,53 +173,32 @@ struct WindowRootView: View {
                 appState.activeTarget = target
             }
         }
-        .onReceive(NotificationCenter.default.publisher(for: .openPendingTargets)) { _ in
-            guard appState.windowsToOpen > 0 else { return }
-            let count = appState.windowsToOpen
-            appState.windowsToOpen = 0
-            for _ in 0..<count {
-                openWindow(id: "main")
-            }
-        }
     }
 }
 
-/// Hides the window (alpha=0) until content is ready, preventing flicker.
-struct WindowFlickerGuard: NSViewRepresentable {
-    var isReady: Bool
-
-    func makeNSView(context: Context) -> FlickerGuardView {
-        FlickerGuardView()
-    }
-
-    func updateNSView(_ nsView: FlickerGuardView, context: Context) {
-        if isReady, let window = nsView.window, window.alphaValue == 0 {
-            window.alphaValue = 1
+struct EmptyWindowPlaceholder: View {
+    var body: some View {
+        VStack(spacing: 12) {
+            Image(systemName: "doc.text")
+                .font(.system(size: 48))
+                .foregroundStyle(.tertiary)
+            Text("Press \u{2318}O to open a file or folder")
+                .foregroundStyle(.secondary)
+            Text("\u{2318}K for Quick Open")
+                .foregroundStyle(.tertiary)
+                .font(.callout)
         }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .background(.background)
     }
-
-    class FlickerGuardView: NSView {
-        private var didHide = false
-
-        override func viewDidMoveToWindow() {
-            super.viewDidMoveToWindow()
-            guard let window, !didHide else { return }
-            didHide = true
-            window.alphaValue = 0
-        }
-    }
-}
-
-extension Notification.Name {
-    static let openPendingTargets = Notification.Name("openPendingTargets")
 }
 
 struct AppCommands: Commands {
     let appState: AppState
     @Environment(\.openWindow) private var openWindow
 
-    private func recentIcon(_ target: OpenTarget) -> String {
-        switch target {
+    private func recentIcon(_ recent: RecentTarget) -> String {
+        switch recent {
         case .file: "doc"
         case .directory: "folder"
         }
@@ -257,14 +207,20 @@ struct AppCommands: Commands {
     var body: some Commands {
         CommandGroup(replacing: .newItem) {
             Button {
+                openWindow(value: OpenTarget.newEmpty())
+            } label: {
+                Label("New Window", systemImage: "macwindow.badge.plus")
+            }
+            .keyboardShortcut("n", modifiers: .command)
+
+            Button {
                 Task { @MainActor in
                     let paths = await FilePicker.chooseFilesOrDirectories()
                     for path in paths {
                         var isDir: ObjCBool = false
                         FileManager.default.fileExists(atPath: path, isDirectory: &isDir)
                         let target: OpenTarget = isDir.boolValue ? .directory(path: path) : .file(path: path)
-                        appState.pendingTargets.append(target)
-                        openWindow(id: "main")
+                        openWindow(value: target)
                     }
                 }
             } label: {
@@ -277,12 +233,11 @@ struct AppCommands: Commands {
                 if recents.isEmpty {
                     Text("No Recent Items")
                 } else {
-                    ForEach(recents, id: \.self) { target in
+                    ForEach(recents, id: \.self) { recent in
                         Button {
-                            appState.pendingTargets.append(target)
-                            openWindow(id: "main")
+                            openWindow(value: recent.openTarget)
                         } label: {
-                            Label(abbreviatePath(target.path), systemImage: recentIcon(target))
+                            Label(abbreviatePath(recent.path), systemImage: recentIcon(recent))
                         }
                     }
                     Divider()
@@ -306,7 +261,13 @@ struct AppCommands: Commands {
 
         CommandGroup(after: .newItem) {
             Button {
-                NotificationCenter.default.post(name: .newTab, object: nil)
+                // New empty tab in the current window: prefer tab grouping on
+                // the key window, then open a fresh empty target.
+                if let win = NSApp.keyWindow {
+                    win.tabbingMode = .preferred
+                    DispatchQueue.main.async { win.tabbingMode = .automatic }
+                }
+                openWindow(value: OpenTarget.newEmpty())
             } label: {
                 Label("New Tab", systemImage: "plus.square.on.square")
             }
@@ -438,3 +399,4 @@ struct AppCommands: Commands {
         }
     }
 }
+

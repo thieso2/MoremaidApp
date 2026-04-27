@@ -2,19 +2,72 @@ import Foundation
 
 // MARK: - Open Target
 
-enum OpenTarget: Codable, Hashable {
+/// Identity of a window's content. Used as the value type for
+/// `WindowGroup(for: OpenTarget.self)`, so SwiftUI handles state restoration
+/// and "focus existing window with same value" automatically.
+enum OpenTarget: Codable, Hashable, Sendable {
+    case file(path: String)
+    case directory(path: String, initialFile: String?)
+    /// Empty placeholder window/tab — UUID makes each instance unique so
+    /// `openWindow(value:)` opens a fresh window every time ⌘T / ⌘N is pressed.
+    case empty(id: UUID)
+
+    var path: String? {
+        switch self {
+        case .file(let path): path
+        case .directory(let path, _): path
+        case .empty: nil
+        }
+    }
+
+    var displayName: String {
+        switch self {
+        case .file(let path), .directory(let path, _):
+            return (path as NSString).lastPathComponent
+        case .empty:
+            return "Untitled"
+        }
+    }
+
+    static func directory(path: String) -> OpenTarget {
+        .directory(path: path, initialFile: nil)
+    }
+
+    static func newEmpty() -> OpenTarget {
+        .empty(id: UUID())
+    }
+}
+
+// MARK: - Recent Target
+
+/// Stable identity of a recently-opened item. Persisted to UserDefaults; we
+/// keep it separate from `OpenTarget` so adding new associated values to
+/// `OpenTarget` doesn't break existing user data.
+enum RecentTarget: Codable, Hashable, Sendable {
     case file(path: String)
     case directory(path: String)
 
     var path: String {
         switch self {
-        case .file(let path): path
-        case .directory(let path): path
+        case .file(let path), .directory(let path): path
         }
     }
 
-    var displayName: String {
-        (path as NSString).lastPathComponent
+    var openTarget: OpenTarget {
+        switch self {
+        case .file(let path): .file(path: path)
+        case .directory(let path): .directory(path: path, initialFile: nil)
+        }
+    }
+}
+
+extension OpenTarget {
+    var recent: RecentTarget? {
+        switch self {
+        case .file(let path): .file(path: path)
+        case .directory(let path, _): .directory(path: path)
+        case .empty: nil
+        }
     }
 }
 
@@ -68,11 +121,11 @@ enum SortMethod: String, CaseIterable, Sendable {
     }
 }
 
-// MARK: - View Mode
+// MARK: - Sidebar Sort
 
-enum ViewMode: String, Sendable {
-    case flat
-    case tree
+enum SidebarSort: String, Sendable {
+    case foldersFirst = "folders-first"
+    case interleaved = "interleaved"
 }
 
 // MARK: - Search Mode

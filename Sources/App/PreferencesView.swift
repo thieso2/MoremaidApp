@@ -13,6 +13,8 @@ struct PreferencesView: View {
     @AppStorage("defaultTypography") private var defaultTypography = Constants.defaultTypography
     @AppStorage("defaultZoom") private var defaultZoom = Constants.zoomDefault
     @AppStorage("autoReload") private var autoReload = true
+    @AppStorage("sidebarSort") private var sidebarSort: String = SidebarSort.foldersFirst.rawValue
+    @AppStorage("sidebarFontSize") private var sidebarFontSize: Double = 13
     @State private var launchAtLogin = SMAppService.mainApp.status == .enabled
     @State private var cliStatus = CLIInstaller.checkStatus()
     @State private var cliError: String?
@@ -48,6 +50,28 @@ struct PreferencesView: View {
                 .onChange(of: autoReload) {
                     notifySettingsChanged()
                 }
+
+            Picker("Sidebar Sort", selection: $sidebarSort) {
+                Text("Folders First").tag(SidebarSort.foldersFirst.rawValue)
+                Text("Interleaved").tag(SidebarSort.interleaved.rawValue)
+            }
+
+            HStack {
+                Text("Sidebar Font Size")
+                Spacer()
+                Button("-") { sidebarFontSize = max(9, sidebarFontSize - 1) }
+                    .buttonStyle(.bordered)
+                    .controlSize(.small)
+                Text("\(Int(sidebarFontSize)) pt")
+                    .frame(width: 50, alignment: .center)
+                    .monospacedDigit()
+                Button("+") { sidebarFontSize = min(20, sidebarFontSize + 1) }
+                    .buttonStyle(.bordered)
+                    .controlSize(.small)
+                Button("Reset") { sidebarFontSize = 13 }
+                    .buttonStyle(.bordered)
+                    .controlSize(.small)
+            }
 
             Toggle("Launch at Login", isOn: $launchAtLogin)
                 .onChange(of: launchAtLogin) { _, newValue in

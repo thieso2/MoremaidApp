@@ -22,7 +22,7 @@ After changing `Project.swift` or `Tuist.swift`, run `mise generate` before `mis
 
 - **Bundle ID:** `de.tmp8.moremaid` (team `6629AD7A87`, automatic signing)
 - **Targets:** Moremaid (app), MoremaidCLI (command-line `mm`), MoremaidQuickLook (extension), MoremaidTests
-- **Swift 6** with strict concurrency, macOS 14.0+ deployment target
+- **Swift 6** with strict concurrency, macOS 15.0+ deployment target
 - **Dependencies:** ZIPFoundation (ZIP handling); markdown-it, Prism.js, Mermaid.js loaded via CDN
 - **App sandbox disabled** via `Moremaid.entitlements` for filesystem access
 - **Tuist** for project generation, DerivedData in local `.derivedData/`
@@ -34,7 +34,7 @@ After changing `Project.swift` or `Tuist.swift`, run `mise generate` before `mis
 | Module | Purpose |
 |---|---|
 | `App/` | App lifecycle, window management, state persistence, preferences |
-| `FileBrowser/` | Directory browsing, single-file view, WebView wrapper, TOC, tabs, search UI |
+| `FileBrowser/` | Directory browsing, single-file view, WebView wrapper, **Navigator** (left sidebar — `SidebarView.swift` / `SidebarTree.swift` / `HeadingParser.swift`), tabs, search UI |
 | `Rendering/` | HTML generation, CSS themes/typography, JavaScript page scripts |
 | `Search/` | Fuzzy matcher (QuickOpen), content search (Find in Files) |
 | `Archive/` | ZIP virtual filesystem, LRU cache, pack/unpack operations |
@@ -44,15 +44,19 @@ After changing `Project.swift` or `Tuist.swift`, run `mise generate` before `mis
 
 ### Window Lifecycle
 
-SwiftUI `WindowGroup(id: "main")` creates windows. Each `WindowRootView` instance claims a target from a queue:
+SwiftUI `WindowGroup(for: OpenTarget.self)` — each window holds an `OpenTarget?` value. SwiftUI handles lifecycle, "focus existing window with same value", and would handle restoration except we opt out:
 
-1. `AppState` loads saved sessions on init → populates `pendingSessions`
-2. First window's `.task` calls `claimPendingSession()` and opens remaining via `openWindow(id: "main")`
-3. New windows from Cmd+O or drag-drop go through `pendingTargets` queue
-4. Windows with no target to claim call `dismiss()`
-5. `WindowFrameTracker` (NSViewRepresentable) saves window position every 2s
+- `.restorationBehavior(.disabled)` — no window restoration across launches
+- `.defaultLaunchBehavior(.suppressed)` — no empty window at launch
+- `application(_:open:)` (AppDelegate) → `appState.openTarget(target)` → handler bridge (registered by `WindowRootView.task`) → `openWindow(value: target)`
+- File → Open / Open Recent / ⌘N call `openWindow(value:)` directly from the Commands DSL.
+- New tab uses `NSWindow.tabbingMode = .preferred` + a fresh `OpenTarget.empty(UUID())` so each tab is a unique value.
 
-**Flicker prevention:** `WindowTrackerView` (custom NSView) sets `window.alphaValue = 0` in `viewDidMoveToWindow()` before the window renders. The window is revealed (`alphaValue = 1`) only after content is claimed.
+`OpenTarget` cases: `.file(path)`, `.directory(path, initialFile)`, `.empty(UUID)`. `RecentTarget` is a separate Codable type used for UserDefaults persistence (decoupled from `OpenTarget` so adding cases doesn't break old data).
+
+### Navigator
+
+Left sidebar = "Navigator". Toggle with ⇧⌘T. Source: `SidebarView.swift`. Renders a flat row list (`SidebarRow` enum: folder / file / heading) so `LazyVStack` is actually lazy. Headings are parsed on-demand via `HeadingParser` (mirrors the JS slugify in `PageScripts.swift` so anchor IDs match). Folder expansion persists per directory in UserDefaults; file expansion is ephemeral per session.
 
 ### Rendering Pipeline
 

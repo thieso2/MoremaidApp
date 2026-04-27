@@ -41,12 +41,16 @@ struct SingleFileView: View {
                     NSWorkspace.shared.open(URL(fileURLWithPath: path))
                 }
                 webViewStore.onOpenInNewTab = { path, _ in
-                    appState.queueNewTab(target: .file(path: path), selectedFile: path)
-                    openAsTab()
+                    let sourceWindow = webViewStore.webView?.window
+                    let previousMode = sourceWindow?.tabbingMode
+                    sourceWindow?.tabbingMode = .preferred
+                    openWindow(value: OpenTarget.file(path: path))
+                    if let previousMode {
+                        DispatchQueue.main.async { sourceWindow?.tabbingMode = previousMode }
+                    }
                 }
                 webViewStore.onOpenInNewWindow = { path, _ in
-                    appState.queueNewTab(target: .file(path: path), selectedFile: path)
-                    openWindow(id: "main")
+                    openWindow(value: OpenTarget.file(path: path))
                 }
                 loadFile()
             }
@@ -77,11 +81,6 @@ struct SingleFileView: View {
             .onReceive(NotificationCenter.default.publisher(for: .toggleStatusBar)) { _ in
                 guard isKeyWindow else { return }
                 withAnimation(.easeInOut(duration: 0.2)) { showStatusBar.toggle() }
-            }
-            .onReceive(NotificationCenter.default.publisher(for: .newTab)) { _ in
-                guard isKeyWindow else { return }
-                appState.queueNewTab(target: .file(path: filePath), selectedFile: filePath)
-                openAsTab()
             }
     }
 
@@ -201,18 +200,6 @@ struct SingleFileView: View {
                 Label(copyFeedback ? "Copied!" : "Copy Markdown", systemImage: "doc.on.doc")
             }
             .help("Copy raw markdown to clipboard")
-        }
-    }
-
-    // MARK: - New Tab
-
-    private func openAsTab() {
-        let sourceWindow = webViewStore.webView?.window
-        let previousMode = sourceWindow?.tabbingMode
-        sourceWindow?.tabbingMode = .preferred
-        openWindow(id: "main")
-        if let previousMode {
-            sourceWindow?.tabbingMode = previousMode
         }
     }
 

@@ -256,18 +256,15 @@ struct DirectoryWindowView: View {
                 guard isKeyWindow, selectedFile != nil else { return }
                 webViewStore.exportPDF()
             }
-            .onReceive(NotificationCenter.default.publisher(for: .openInExternalEditor)) { _ in
-                guard isKeyWindow, let file = selectedFile, !isAutoIndex(file) else { return }
-                openInExternalEditor(file.absolutePath)
-            }
-            .onReceive(NotificationCenter.default.publisher(for: .toggleSourceEdit)) { _ in
-                guard isKeyWindow else { return }
-                toggleSourceEdit()
-            }
-            .onReceive(NotificationCenter.default.publisher(for: .saveFile)) { _ in
-                guard isKeyWindow, isEditing else { return }
-                saveEditorText()
-            }
+            .modifier(EditHandlers(
+                isKeyWindow: isKeyWindow,
+                onExternal: {
+                    guard let file = selectedFile, !isAutoIndex(file) else { return }
+                    openInExternalEditor(file.absolutePath)
+                },
+                onToggleSource: { toggleSourceEdit() },
+                onSave: { if isEditing { saveEditorText() } }
+            ))
             .onReceive(NotificationCenter.default.publisher(for: .settingsChanged)) { _ in
                 handleSettingsChanged()
             }
@@ -1290,6 +1287,29 @@ struct FindHandlers: ViewModifier {
             .onReceive(NotificationCenter.default.publisher(for: .useSelectionForFind)) { _ in
                 guard isKeyWindow else { return }
                 onUseSelection()
+            }
+    }
+}
+
+struct EditHandlers: ViewModifier {
+    let isKeyWindow: Bool
+    let onExternal: () -> Void
+    let onToggleSource: () -> Void
+    let onSave: () -> Void
+
+    func body(content: Content) -> some View {
+        content
+            .onReceive(NotificationCenter.default.publisher(for: .openInExternalEditor)) { _ in
+                guard isKeyWindow else { return }
+                onExternal()
+            }
+            .onReceive(NotificationCenter.default.publisher(for: .toggleSourceEdit)) { _ in
+                guard isKeyWindow else { return }
+                onToggleSource()
+            }
+            .onReceive(NotificationCenter.default.publisher(for: .saveFile)) { _ in
+                guard isKeyWindow else { return }
+                onSave()
             }
     }
 }

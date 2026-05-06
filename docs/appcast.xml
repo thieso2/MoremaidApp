@@ -185,5 +185,17 @@
         length="7558257"
         type="application/octet-stream" />
 </item>
+            <item>
+    <title>Version 0.5.1</title>
+    <pubDate>Wed, 06 May 2026 08:11:07 +0000</pubDate>
+    <sparkle:version>14</sparkle:version>
+    <sparkle:shortVersionString>0.5.1</sparkle:shortVersionString>
+    <sparkle:minimumSystemVersion>14.0</sparkle:minimumSystemVersion>
+    <enclosure
+        url="https://github.com/thieso2/MoremaidApp/releases/download/v0.5.1/Moremaid-0.5.1-macOS.zip"
+        sparkle:edSignature="yUn9W0il8DjVNot43ezv4PZPQvAVrUtUBORWnALLVYB7Q0to1/AqG6QMdSL10iiGP67eDEwTmnKJKNlghXhHCg=="
+        length="7572124"
+        type="application/octet-stream" />
+</item>
     </channel>
 </rss>

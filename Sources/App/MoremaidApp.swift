@@ -99,6 +99,11 @@ import SwiftUI
             appState.openTarget(target)
         }
     }
+
+    func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool {
+        print("[AppDelegate] applicationShouldHandleReopen hasVisibleWindows=\(flag)")
+        return flag
+    }
 }
 
 @main
@@ -139,6 +144,7 @@ struct WindowRootView: View {
     @Binding var target: OpenTarget?
     @Environment(AppState.self) private var appState
     @Environment(\.openWindow) private var openWindow
+    @Environment(\.dismiss) private var dismiss
     @Environment(\.controlActiveState) private var controlActiveState
 
     private var isKeyWindow: Bool { controlActiveState == .key }
@@ -153,25 +159,64 @@ struct WindowRootView: View {
                     directoryPath: path,
                     initialFilePath: initialFile
                 )
-            case .empty, nil:
+            case .empty:
                 EmptyWindowPlaceholder()
+            case nil:
+                Color.clear
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
             }
         }
-        .task {
-            // Register a bridge so AppDelegate.application(_:open:) — and any
-            // other non-View context — can call into SwiftUI's openWindow.
-            // The first window to come up registers; if it goes away, the
-            // next one re-registers via this same .task.
-            if appState.openTargetHandler == nil {
-                appState.openTargetHandler = { [openWindow] target in
-                    openWindow(value: target)
-                }
-            }
-        }
+        .background(ImplicitDefaultWindowSuppressor(isSuppressed: target == nil))
+        .task { await windowTask() }
         .onChange(of: controlActiveState) {
             if isKeyWindow {
                 appState.activeTarget = target
             }
+        }
+    }
+
+    private func windowTask() async {
+        // Register a bridge so AppDelegate.application(_:open:) — and any
+        // other non-View context — can call into SwiftUI's openWindow.
+        appState.openTargetHandler = { [openWindow] target in
+            openWindow(value: target)
+        }
+
+        await dismissImplicitDefaultWindowIfNeeded()
+    }
+
+    private func dismissImplicitDefaultWindowIfNeeded() async {
+        guard target == nil else { return }
+        await Task.yield()
+        guard target == nil else { return }
+        dismiss()
+    }
+}
+
+/// Keeps SwiftUI's implicit `nil` scene from flashing before we dismiss it.
+private struct ImplicitDefaultWindowSuppressor: NSViewRepresentable {
+    let isSuppressed: Bool
+
+    func makeNSView(context: Context) -> SuppressorView {
+        SuppressorView()
+    }
+
+    func updateNSView(_ nsView: SuppressorView, context: Context) {
+        nsView.isSuppressed = isSuppressed
+        nsView.applySuppression()
+    }
+
+    final class SuppressorView: NSView {
+        var isSuppressed = false
+
+        override func viewDidMoveToWindow() {
+            super.viewDidMoveToWindow()
+            applySuppression()
+        }
+
+        func applySuppression() {
+            guard let window else { return }
+            window.alphaValue = isSuppressed ? 0 : 1
         }
     }
 }
@@ -201,6 +246,12 @@ struct AppCommands: Commands {
         switch recent {
         case .file: "doc"
         case .directory: "folder"
+        }
+    }
+
+    private func closeKeyWindow() {
+        if !NSApp.sendAction(#selector(NSWindow.performClose(_:)), to: nil, from: nil) {
+            (NSApp.keyWindow ?? NSApp.mainWindow)?.performClose(nil)
         }
     }
 
@@ -275,6 +326,15 @@ struct AppCommands: Commands {
         }
 
         CommandGroup(replacing: .saveItem) {
+            Button {
+                closeKeyWindow()
+            } label: {
+                Label("Close Window", systemImage: "xmark.rectangle")
+            }
+            .keyboardShortcut("w", modifiers: .command)
+
+            Divider()
+
             Button {
                 NotificationCenter.default.post(name: .saveFile, object: nil)
             } label: {
@@ -421,4 +481,3 @@ struct AppCommands: Commands {
         }
     }
 }
-

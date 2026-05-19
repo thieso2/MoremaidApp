@@ -552,7 +552,7 @@ struct DirectoryWindowView: View {
             // Refresh the WebView's cached render and the navigator's heading
             // list so they're current when the user toggles back.
             webViewStore.reload()
-            headingsCache[file.relativePath] = HeadingParser.extractHeadings(from: editorText)
+            headingsCache[file.relativePath] = HeadingParser.extractHeadings(from: editorText, fileName: file.name)
         } catch {
             print("[moremaid] save failed: \(error)")
             NSSound.beep()
@@ -1068,6 +1068,7 @@ struct DirectoryWindowView: View {
     private static let defaultFileNames = [
         "readme.md", "readme.markdown",
         "index.md", "index.markdown",
+        "index.html", "index.htm",
         "claude.md",
     ]
 

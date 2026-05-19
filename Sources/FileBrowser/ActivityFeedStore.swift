@@ -10,7 +10,7 @@ final class ActivityFeedStore {
 
     var filteredEvents: [ActivityEvent] {
         if markdownOnly {
-            return events.filter { $0.fileEntry.isMarkdown }
+            return events.filter { $0.fileEntry.isDefaultFiltered }
         }
         return events
     }

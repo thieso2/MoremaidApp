@@ -192,7 +192,7 @@ struct ActivityFeedView: View {
 
     private var bottomBar: some View {
         HStack {
-            Toggle("Markdown Only", isOn: Binding(
+            Toggle("Markdown & HTML", isOn: Binding(
                 get: { activityStore.markdownOnly },
                 set: { activityStore.markdownOnly = $0 }
             ))

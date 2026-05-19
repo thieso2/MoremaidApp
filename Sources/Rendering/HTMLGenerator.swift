@@ -2,6 +2,11 @@ import Foundation
 
 /// Main entry point for generating HTML pages.
 enum HTMLGenerator {
+    /// Returns raw HTML so `.html` and `.htm` files render as documents.
+    static func htmlPage(content: String) -> String {
+        content
+    }
+
     /// Generates a full HTML page for rendering markdown content.
     static func markdownPage(
         content: String,

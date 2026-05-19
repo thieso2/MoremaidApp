@@ -79,7 +79,7 @@ struct SidebarView: View {
 
     @AppStorage("sidebarWidth") private var width: Double = 240
     @AppStorage("sidebarSort") private var sortRaw: String = SidebarSort.foldersFirst.rawValue
-    @AppStorage("sidebarFilter") private var filterRaw: String = FileFilter.markdownOnly.rawValue
+    @AppStorage("sidebarFilter") private var filterRaw: String = FileFilter.defaultFiles.rawValue
     @AppStorage("sidebarFontSize") private var fontSize: Double = 13
     @State private var search: String = ""
     @State private var expandedFolders: Set<String> = []
@@ -92,7 +92,7 @@ struct SidebarView: View {
     }
 
     private var filter: FileFilter {
-        FileFilter(rawValue: filterRaw) ?? .markdownOnly
+        FileFilter(rawValue: filterRaw) ?? .defaultFiles
     }
 
     /// Files passing the type filter and the search query. Search matches
@@ -180,7 +180,7 @@ struct SidebarView: View {
                 }
             case .file(let entry):
                 let cached = headingsCache[entry.relativePath]
-                let hasChildren = entry.isMarkdown // markdown rows always show a chevron
+                let hasChildren = entry.isDefaultFiltered
                 let isOpen = exp.files.contains(entry.relativePath) && hasChildren
                 let isSelected = selectedFile?.relativePath == entry.relativePath
                 rows.append(.file(
@@ -244,8 +244,8 @@ struct SidebarView: View {
             }
             Menu {
                 Picker("Show", selection: $filterRaw) {
-                    Text("Markdown Only").tag(FileFilter.markdownOnly.rawValue)
-                    Text("All Files").tag(FileFilter.allFiles.rawValue)
+                    Text(FileFilter.defaultFiles.label).tag(FileFilter.defaultFiles.rawValue)
+                    Text(FileFilter.allFiles.label).tag(FileFilter.allFiles.rawValue)
                 }
                 Divider()
                 Picker("Sort", selection: $sortRaw) {
@@ -381,8 +381,8 @@ struct SidebarView: View {
             expandedFiles.remove(entry.relativePath)
         } else {
             // Populate cache from disk if we don't already have headings for
-            // this file (cheap for typical markdown files).
-            if entry.isMarkdown && headingsCache[entry.relativePath] == nil {
+            // this file (cheap for typical markdown and HTML files).
+            if entry.isDefaultFiltered && headingsCache[entry.relativePath] == nil {
                 headingsCache[entry.relativePath] = HeadingParser.extractHeadings(fromFileAtPath: entry.absolutePath)
             }
             expandedFiles.insert(entry.relativePath)
@@ -558,11 +558,6 @@ struct SidebarHeadingRow: View {
                 }
             }
             .frame(width: 10)
-
-            Image(systemName: "number")
-                .foregroundStyle(.tertiary)
-                .font(.system(size: max(9, fontSize - 2)))
-                .frame(width: 12)
 
             Text(heading.text)
                 .font(.system(size: max(9, fontSize - 1)))

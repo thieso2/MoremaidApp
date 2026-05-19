@@ -86,6 +86,14 @@ struct FileEntry: Identifiable, Hashable, Sendable {
         let dir = (relativePath as NSString).deletingLastPathComponent
         return dir == "." ? "" : dir
     }
+
+    var isHTML: Bool {
+        isHTMLFile(name)
+    }
+
+    var isDefaultFiltered: Bool {
+        isMarkdown || isHTML
+    }
 }
 
 // MARK: - Sort Method
@@ -154,11 +162,13 @@ struct ActivityEvent: Identifiable, Sendable {
 // MARK: - File Filter
 
 enum FileFilter: String, Sendable {
-    case markdownOnly = "*.md"
+    case defaultFiles = "*.md"
+    case markdownOnly = "*.md-only"
     case allFiles = "*"
 
     var label: String {
         switch self {
+        case .defaultFiles: "Markdown & HTML"
         case .markdownOnly: "Markdown Only"
         case .allFiles: "All Files"
         }
@@ -166,6 +176,7 @@ enum FileFilter: String, Sendable {
 
     func matches(_ entry: FileEntry) -> Bool {
         switch self {
+        case .defaultFiles: entry.isDefaultFiltered
         case .markdownOnly: entry.isMarkdown
         case .allFiles: true
         }

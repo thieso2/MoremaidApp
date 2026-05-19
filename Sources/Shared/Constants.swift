@@ -40,6 +40,7 @@ enum Constants {
     static let lruCacheSize = 100 * 1024 * 1024 // 100 MB
     static let archiveExtension = ".moremaid"
     static let markdownExtensions: Set<String> = ["md", "markdown"]
+    static let htmlExtensions: Set<String> = ["html", "htm"]
 
     // MARK: - CDN Versions
     static let mermaidVersion = "10"

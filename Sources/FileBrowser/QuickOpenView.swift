@@ -62,7 +62,7 @@ struct QuickOpenView: View {
 
     /// Filtered files for the current settings.
     private var baseFiles: [FileEntry] {
-        markdownOnly ? files.filter { $0.isMarkdown } : files
+        markdownOnly ? files.filter { $0.isDefaultFiltered } : files
     }
 
     /// Flat mode results — files in currentDir and below, filtered by query.
@@ -353,7 +353,7 @@ struct QuickOpenView: View {
                 markdownOnly.toggle()
                 selectedIndex = 0
             } label: {
-                Text(markdownOnly ? "MD" : "All")
+                Text(markdownOnly ? "Docs" : "All")
                     .font(.caption.bold())
                     .padding(.horizontal, 6)
                     .padding(.vertical, 2)

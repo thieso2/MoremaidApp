@@ -37,9 +37,7 @@ enum FileScanner {
                   values.isRegularFile == true else { continue }
 
             let isMd = isMarkdownFile(url.lastPathComponent)
-            if filter == .markdownOnly && !isMd { continue }
-
-            entries.append(FileEntry(
+            let entry = FileEntry(
                 id: relativePath,
                 name: url.lastPathComponent,
                 relativePath: relativePath,
@@ -47,7 +45,9 @@ enum FileScanner {
                 size: values.fileSize ?? 0,
                 modifiedDate: values.contentModificationDate ?? Date.distantPast,
                 isMarkdown: isMd
-            ))
+            )
+            if !filter.matches(entry) { continue }
+            entries.append(entry)
         }
 
         return entries
@@ -89,13 +89,14 @@ enum FileScanner {
                         guard let values = try? url.resourceValues(forKeys: resourceKeys),
                               values.isRegularFile == true else { continue }
                         let isMd = isMarkdownFile(name)
-                        if filter == .markdownOnly && !isMd { continue }
-                        rootFiles.append(FileEntry(
+                        let entry = FileEntry(
                             id: name, name: name, relativePath: name, absolutePath: url.path,
                             size: values.fileSize ?? 0,
                             modifiedDate: values.contentModificationDate ?? Date.distantPast,
                             isMarkdown: isMd
-                        ))
+                        )
+                        if !filter.matches(entry) { continue }
+                        rootFiles.append(entry)
                     }
                 }
             }
@@ -149,9 +150,7 @@ enum FileScanner {
                               values.isRegularFile == true else { continue }
 
                         let isMd = isMarkdownFile(url.lastPathComponent)
-                        if filter == .markdownOnly && !isMd { continue }
-
-                        batch.append(FileEntry(
+                        let entry = FileEntry(
                             id: relativePath,
                             name: url.lastPathComponent,
                             relativePath: relativePath,
@@ -159,7 +158,9 @@ enum FileScanner {
                             size: values.fileSize ?? 0,
                             modifiedDate: values.contentModificationDate ?? Date.distantPast,
                             isMarkdown: isMd
-                        ))
+                        )
+                        if !filter.matches(entry) { continue }
+                        batch.append(entry)
 
                         if batch.count >= batchSize {
                             let chunk = batch

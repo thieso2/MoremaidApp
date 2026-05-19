@@ -55,6 +55,19 @@ func isMarkdownFile(_ path: String) -> Bool {
     return Constants.markdownExtensions.contains(ext)
 }
 
+// MARK: - HTML Extension Check
+
+func isHTMLFile(_ path: String) -> Bool {
+    let ext = (path as NSString).pathExtension.lowercased()
+    return Constants.htmlExtensions.contains(ext)
+}
+
+// MARK: - Default Filter Check
+
+func isDefaultFilteredFile(_ path: String) -> Bool {
+    isMarkdownFile(path) || isHTMLFile(path)
+}
+
 // MARK: - External Editor
 
 #if canImport(AppKit)

@@ -85,6 +85,8 @@ actor ZipVirtualFS {
 
         let filesToSearch: [String]
         switch filter {
+        case .defaultFiles:
+            filesToSearch = entries.keys.filter { isDefaultFilteredFile($0) }
         case .markdownOnly:
             filesToSearch = entries.keys.filter { isMarkdownFile($0) }
         case .allFiles:

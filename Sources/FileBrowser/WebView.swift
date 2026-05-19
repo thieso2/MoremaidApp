@@ -88,6 +88,8 @@ class WebViewStore {
                 theme: theme,
                 typography: typography
             )
+        } else if file.isHTML {
+            html = HTMLGenerator.htmlPage(content: content)
         } else {
             html = HTMLGenerator.codePage(
                 content: content,
@@ -120,6 +122,12 @@ class WebViewStore {
         let escaped = content.jsonStringLiteral
         if file.isMarkdown {
             webView?.evaluateJavaScript("reRenderMarkdown(\(escaped));", completionHandler: nil)
+        } else if file.isHTML {
+            let fileDir = (file.absolutePath as NSString).deletingLastPathComponent
+            let baseURL = URL(fileURLWithPath: fileDir, isDirectory: true)
+            let html = HTMLGenerator.htmlPage(content: content)
+            webView?.loadHTMLString(html, baseURL: baseURL)
+            applyZoom(zoom)
         } else {
             let language = LanguageMaps.language(forFile: file.name)
             webView?.evaluateJavaScript("reRenderCode(\(escaped), '\(language)');", completionHandler: nil)
@@ -263,7 +271,13 @@ class WebViewStore {
     func getHeadings() async -> [HeadingEntry] {
         guard let webView else { return [] }
         do {
-            let result = try await webView.evaluateJavaScript("getHeadingList();")
+            let result = try await webView.evaluateJavaScript("""
+            (function() {
+                if (typeof window.moremaidGetHeadingList === 'function') return window.moremaidGetHeadingList();
+                if (typeof window.getHeadingList === 'function') return window.getHeadingList();
+                return '[]';
+            })();
+            """)
             guard let json = result as? String,
                   let data = json.data(using: .utf8) else { return [] }
             return (try? JSONDecoder().decode([HeadingEntry].self, from: data)) ?? []
@@ -275,7 +289,13 @@ class WebViewStore {
     func getCurrentHeadingID() async -> String {
         guard let webView else { return "" }
         do {
-            let result = try await webView.evaluateJavaScript("getCurrentHeadingId();")
+            let result = try await webView.evaluateJavaScript("""
+            (function() {
+                if (typeof window.moremaidGetCurrentHeadingId === 'function') return window.moremaidGetCurrentHeadingId();
+                if (typeof window.getCurrentHeadingId === 'function') return window.getCurrentHeadingId();
+                return '';
+            })();
+            """)
             return result as? String ?? ""
         } catch {
             return ""
@@ -484,6 +504,74 @@ struct WebView: NSViewRepresentable {
             })();
             """, injectionTime: .atDocumentEnd, forMainFrameOnly: true)
         config.userContentController.addUserScript(linkHoverScript)
+
+        let headingScript = WKUserScript(source: #"""
+            (function() {
+                function slugify(s) {
+                    return String(s || '').toLowerCase()
+                        .replace(/[^\w\s-]/g, '')
+                        .replace(/\s+/g, '-')
+                        .replace(/-+/g, '-')
+                        .replace(/^-|-$/g, '');
+                }
+
+                function rootElement() {
+                    return document.querySelector('main') || document.body || document.documentElement;
+                }
+
+                function isIgnoredHeading(h) {
+                    return !!h.closest('aside, nav, header, footer, .sidebar, [role="navigation"]');
+                }
+
+                function headings() {
+                    var root = rootElement();
+                    var list = Array.prototype.slice.call(root.querySelectorAll('h1, h2, h3, h4, h5, h6'))
+                        .filter(function(h) { return !isIgnoredHeading(h); });
+                    var counts = {};
+                    list.forEach(function(h) {
+                        if (h.id) {
+                            counts[h.id] = (counts[h.id] || 0) + 1;
+                            return;
+                        }
+                        var base = slugify(h.textContent) || 'heading';
+                        var id = base;
+                        if (counts[id]) {
+                            id = base + '-' + counts[base]++;
+                        } else {
+                            counts[base] = 1;
+                        }
+                        h.id = id;
+                    });
+                    return list;
+                }
+
+                window.moremaidGetHeadingList = function() {
+                    return JSON.stringify(headings().map(function(h) {
+                        return {
+                            level: parseInt(h.tagName.substring(1), 10),
+                            text: h.textContent.trim().replace(/\s+/g, ' '),
+                            id: h.id
+                        };
+                    }));
+                };
+
+                window.moremaidGetCurrentHeadingId = function() {
+                    var list = headings();
+                    if (list.length === 0) return '';
+                    var scrollY = window.scrollY;
+                    var atBottom = (window.innerHeight + scrollY) >= (document.body.scrollHeight - 4);
+                    if (atBottom) return list[list.length - 1].id;
+                    var current = '';
+                    for (var i = 0; i < list.length; i++) {
+                        if (list[i].getBoundingClientRect().top + scrollY <= scrollY + 60) {
+                            current = list[i].id;
+                        }
+                    }
+                    return current;
+                };
+            })();
+            """#, injectionTime: .atDocumentEnd, forMainFrameOnly: true)
+        config.userContentController.addUserScript(headingScript)
 
         let webView = MoremaidWebView(frame: .zero, configuration: config)
         webView.navigationDelegate = context.coordinator

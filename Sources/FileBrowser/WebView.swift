@@ -2,6 +2,29 @@ import SwiftUI
 import UniformTypeIdentifiers
 import WebKit
 
+func normalizedDocumentNavigationPath(_ path: String) -> String {
+    let standardized = (path as NSString).standardizingPath
+    guard standardized.count > 1, standardized.hasSuffix("/") else { return standardized }
+    return String(standardized.dropLast())
+}
+
+func isSameDocumentAnchorNavigation(
+    linkPath: String,
+    currentFilePath: String?,
+    currentDocumentDirectory: String?
+) -> Bool {
+    let normalizedLinkPath = normalizedDocumentNavigationPath(linkPath)
+    if let currentFilePath,
+       normalizedLinkPath == normalizedDocumentNavigationPath(currentFilePath) {
+        return true
+    }
+    if let currentDocumentDirectory,
+       normalizedLinkPath == normalizedDocumentNavigationPath(currentDocumentDirectory) {
+        return true
+    }
+    return false
+}
+
 /// Holds a reference to the WKWebView and the raw file content for native actions.
 @Observable
 @MainActor
@@ -18,6 +41,7 @@ class WebViewStore {
     private(set) var rawContent: String?
     private(set) var currentFile: FileEntry?
     private(set) var currentBaseDirectory: String?
+    private(set) var currentDocumentDirectory: String?
     private var pollTimer: Timer?
     private var lastContentHash: Int?
 
@@ -42,6 +66,7 @@ class WebViewStore {
     func loadMarkdown(content: String, title: String, contentDirectory: String, baseDirectory: String) {
         currentFile = nil
         currentBaseDirectory = baseDirectory
+        currentDocumentDirectory = contentDirectory
         rawContent = content
         lastContentHash = nil
         stopWatching()
@@ -77,6 +102,8 @@ class WebViewStore {
         let attrs = try? FileManager.default.attributesOfItem(atPath: file.absolutePath)
         let modDate = attrs?[.modificationDate] as? Date
         let fileSize = attrs?[.size] as? Int
+        let fileDir = (file.absolutePath as NSString).deletingLastPathComponent
+        currentDocumentDirectory = fileDir
 
         let html: String
         if file.isMarkdown {
@@ -101,7 +128,6 @@ class WebViewStore {
             )
         }
 
-        let fileDir = (file.absolutePath as NSString).deletingLastPathComponent
         let baseURL = URL(fileURLWithPath: fileDir, isDirectory: true)
         webView?.loadHTMLString(html, baseURL: baseURL)
         applyZoom(zoom)
@@ -652,9 +678,11 @@ struct WebView: NSViewRepresentable {
 
                 // In-page anchor links (#section) → scroll and push history (not for cmd-click)
                 if !isCmdClick, let fragment = url.fragment {
-                    let baseDir = (store.currentBaseDirectory ?? "")
-                    let currentFile = store.currentFile?.absolutePath
-                    if path == baseDir || path == currentFile {
+                    if isSameDocumentAnchorNavigation(
+                        linkPath: path,
+                        currentFilePath: store.currentFile?.absolutePath,
+                        currentDocumentDirectory: store.currentDocumentDirectory
+                    ) {
                         print("[moremaid]   → in-page anchor: #\(fragment)")
                         store.onAnchorClicked?(fragment)
                         return .cancel

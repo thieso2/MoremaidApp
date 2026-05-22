@@ -92,7 +92,7 @@ enum HeadingParser {
     static func extractHeadings(fromHTML html: String) -> [WebViewStore.HeadingEntry] {
         let structuralHTML = firstTagBody("main", in: html)
             ?? removeBlocks(["aside", "nav", "header", "footer"], from: html)
-        let cleanedHTML = removeBlocks(["script", "style", "pre", "code"], from: structuralHTML)
+        let cleanedHTML = removeBlocks(["script", "style", "pre"], from: structuralHTML)
         guard let regex = try? NSRegularExpression(
             pattern: #"<h([1-6])\b([^>]*)>(.*?)</h\1\s*>"#,
             options: [.caseInsensitive, .dotMatchesLineSeparators]

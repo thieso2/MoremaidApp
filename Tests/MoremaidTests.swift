@@ -76,6 +76,30 @@ import Testing
     #expect(HTMLGenerator.htmlPage(content: source) == source)
 }
 
+@Test func sameDocumentAnchorNavigationMatchesDocumentDirectoryTest() {
+    #expect(isSameDocumentAnchorNavigation(
+        linkPath: "/tmp/docs/api/",
+        currentFilePath: "/tmp/docs/api/index.html",
+        currentDocumentDirectory: "/tmp/docs/api"
+    ))
+}
+
+@Test func sameDocumentAnchorNavigationMatchesCurrentFileTest() {
+    #expect(isSameDocumentAnchorNavigation(
+        linkPath: "/tmp/docs/api/index.html",
+        currentFilePath: "/tmp/docs/api/index.html",
+        currentDocumentDirectory: "/tmp/docs/api"
+    ))
+}
+
+@Test func sameDocumentAnchorNavigationDoesNotMatchProjectRootForNestedDocumentTest() {
+    #expect(!isSameDocumentAnchorNavigation(
+        linkPath: "/tmp/docs",
+        currentFilePath: "/tmp/docs/api/index.html",
+        currentDocumentDirectory: "/tmp/docs/api"
+    ))
+}
+
 @Test func htmlHeadingParserIgnoresNavigationAndUsesMainHeadingsTest() {
     let html = """
     <html>

@@ -29,7 +29,8 @@ enum ContentSearch {
         filter: FileFilter
     ) -> [SearchResult] {
         let basePath = (projectPath as NSString).standardizingPath
-        let files = FileScanner.scan(directory: basePath, filter: filter)
+        let showHidden = UserDefaults.standard.bool(forKey: "showHiddenFiles")
+        let files = FileScanner.scan(directory: basePath, filter: filter, showHidden: showHidden)
 
         switch mode {
         case .filename:

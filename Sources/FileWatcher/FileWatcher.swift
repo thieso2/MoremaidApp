@@ -9,6 +9,13 @@ struct FileChangeEvent: Sendable {
 actor FileWatcher {
     private var streams: [String: FSEventStreamRef] = [:]
     private var continuations: [String: AsyncStream<FileChangeEvent>.Continuation] = [:]
+    private var showHidden = false
+
+    /// Mirrors the app-wide "Show Hidden Files" preference so change events for
+    /// hidden files are (or aren't) surfaced consistently with the scanner.
+    func setShowHidden(_ value: Bool) {
+        showHidden = value
+    }
 
     func watch(directory: String) -> AsyncStream<FileChangeEvent> {
         // Stop existing watcher for this directory
@@ -47,12 +54,14 @@ actor FileWatcher {
     private func _handleEvents(paths: [String], directory: String) {
         guard let continuation = continuations[directory] else { return }
 
-        // Filter out hidden files, .git, node_modules, build artifacts
+        // Always drop .git / node_modules / build artifacts; drop other hidden
+        // (dot-prefixed) paths only when "Show Hidden Files" is off.
         let filtered = paths.filter { path in
             let components = path.split(separator: "/")
             return !components.contains(where: { component in
                 let c = String(component)
-                return c.hasPrefix(".") || c == "node_modules" || c == "Derived" || c == "build"
+                if c == ".git" || c == "node_modules" || c == "Derived" || c == "build" { return true }
+                return !showHidden && c.hasPrefix(".")
             })
         }
 

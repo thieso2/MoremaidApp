@@ -81,6 +81,7 @@ struct DirectoryWindowView: View {
     @State private var fileWatcher = FileWatcher()
     @AppStorage("showBreadcrumb") private var showBreadcrumb = true
     @AppStorage("showStatusBar") private var showStatusBar = true
+    @AppStorage("showHiddenFiles") private var showHiddenFiles = false
     @AppStorage("editorFontSize") private var editorFontSize: Double = 13
     @Environment(\.controlActiveState) private var controlActiveState
 
@@ -129,6 +130,7 @@ struct DirectoryWindowView: View {
                     startTOCScrollTracking()
                 }
                 Task {
+                    await fileWatcher.setShowHidden(showHiddenFiles)
                     let stream = await fileWatcher.watch(directory: directoryPath)
                     for await event in stream {
                         activityStore.processFileChangeEvent(event) { path in
@@ -140,6 +142,12 @@ struct DirectoryWindowView: View {
             }
             .onDisappear {
                 Task { await fileWatcher.stopAll() }
+            }
+            .onChange(of: showHiddenFiles) {
+                // App-wide preference flipped (Preferences, ⇧⌘., or the View menu):
+                // re-scan this window live and keep the watcher's filter in sync.
+                Task { await fileWatcher.setShowHidden(showHiddenFiles) }
+                scanFiles()
             }
     }
 
@@ -1015,7 +1023,7 @@ struct DirectoryWindowView: View {
             }
         }
 
-        FileScanner.scanBatched(directory: directoryPath, filter: .allFiles, batchSize: 500) { batch, done in
+        FileScanner.scanBatched(directory: directoryPath, filter: .allFiles, showHidden: showHiddenFiles, batchSize: 500) { batch, done in
             buffer.append(batch)
             if done { buffer.finish() }
         }
@@ -1164,7 +1172,9 @@ struct DirectoryWindowView: View {
         var files: [(name: String, size: Int, date: Date)] = []
 
         for item in items.sorted(by: { $0.localizedCaseInsensitiveCompare($1) == .orderedAscending }) {
-            guard !item.hasPrefix(".") else { continue }
+            // Always exclude the heavy dirs; reveal other dot-entries only when the toggle is on.
+            if item == ".git" || item == "node_modules" { continue }
+            guard showHiddenFiles || !item.hasPrefix(".") else { continue }
             let fullPath = (dirPath as NSString).appendingPathComponent(item)
             let relativePath = fullPath.hasPrefix(basePath) ? String(fullPath.dropFirst(basePath.count)) : item
             if gitignore.isIgnored(relativePath) { continue }

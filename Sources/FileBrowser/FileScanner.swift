@@ -7,14 +7,16 @@ private let parallelQueue = DispatchQueue(label: "com.moremaid.scanner.parallel"
 
 enum FileScanner {
     /// Recursively scans a directory for files, respecting .gitignore patterns.
-    static func scan(directory: String, filter: FileFilter) -> [FileEntry] {
+    /// When `showHidden` is true, hidden (dot-prefixed) files and directories are
+    /// included; `.git`, `node_modules`, and gitignored entries stay excluded regardless.
+    static func scan(directory: String, filter: FileFilter, showHidden: Bool = false) -> [FileEntry] {
         let basePath = (directory as NSString).standardizingPath
         let fm = FileManager.default
 
         guard let enumerator = fm.enumerator(
             at: URL(fileURLWithPath: basePath),
             includingPropertiesForKeys: resourceKeysArray,
-            options: [.skipsHiddenFiles]
+            options: enumerationOptions(showHidden: showHidden)
         ) else { return [] }
 
         var entries: [FileEntry] = []
@@ -54,9 +56,11 @@ enum FileScanner {
     }
 
     /// Scans on background queues, parallelizing across top-level subdirectories.
+    /// See `scan(directory:filter:showHidden:)` for `showHidden` semantics.
     static func scanBatched(
         directory: String,
         filter: FileFilter,
+        showHidden: Bool = false,
         batchSize: Int,
         callback: @escaping @Sendable ([FileEntry], _ done: Bool) -> Void
     ) {
@@ -76,7 +80,7 @@ enum FileScanner {
             if let contents = try? fm.contentsOfDirectory(
                 at: baseURL,
                 includingPropertiesForKeys: resourceKeysArray,
-                options: [.skipsHiddenFiles]
+                options: enumerationOptions(showHidden: showHidden)
             ) {
                 for url in contents {
                     let name = url.lastPathComponent
@@ -127,7 +131,7 @@ enum FileScanner {
                     guard let enumerator = fm.enumerator(
                         at: subdir.url,
                         includingPropertiesForKeys: resourceKeysArray,
-                        options: [.skipsHiddenFiles]
+                        options: enumerationOptions(showHidden: showHidden)
                     ) else {
                         group.leave()
                         return
@@ -190,6 +194,13 @@ enum FileScanner {
             let elapsed = (CFAbsoluteTimeGetCurrent() - start) * 1000
             print("[scan] done: \(count) files, \(subdirs.count) subdirs parallel, \(String(format: "%.1f", elapsed))ms")
         }
+    }
+
+    private static func enumerationOptions(showHidden: Bool) -> FileManager.DirectoryEnumerationOptions {
+        // `.git` / `node_modules` are always excluded by name (see shouldSkipComponent
+        // and the batched root loop), so dropping .skipsHiddenFiles only reveals ordinary
+        // dot-entries. Directory descent into excluded dirs is stopped via skipDescendants.
+        showHidden ? [] : [.skipsHiddenFiles]
     }
 
     private static func shouldSkipComponent(_ relativePath: String) -> Bool {

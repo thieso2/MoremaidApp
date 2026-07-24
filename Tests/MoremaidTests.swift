@@ -163,6 +163,80 @@ private func he(_ level: Int, _ id: String) -> WebViewStore.HeadingEntry {
     #expect(node.isEmpty)
 }
 
+// MARK: - FileScanner hidden files
+
+/// Builds a temp directory tree exercising the hidden-files decision matrix:
+/// plain file/dir, a hidden dir + file, a hidden file, the always-excluded
+/// `.git` and `node_modules`, and a gitignored dot-dir (`.build/`).
+/// Returns the root; caller must remove it.
+private func makeHiddenFilesFixture() throws -> URL {
+    let fm = FileManager.default
+    // Resolve the /var -> /private/var symlink up front so relative paths computed
+    // by the scanner (which resolves it) line up with this base path.
+    let root = fm.temporaryDirectory
+        .appendingPathComponent("moremaid-scan-\(UUID().uuidString)")
+        .resolvingSymlinksInPath()
+
+    func write(_ text: String, _ relative: String) throws {
+        let url = root.appendingPathComponent(relative)
+        try fm.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
+        try text.write(to: url, atomically: true, encoding: .utf8)
+    }
+
+    try write("v", "visible.md")           // plain file
+    try write("i", "sub/inner.md")         // plain dir + file
+    try write("g", ".github/gh.md")        // hidden dir + file
+    try write("e", ".env")                 // hidden file
+    try write("c", ".git/config")          // always excluded
+    try write("p", "node_modules/pkg.md")  // always excluded
+    try write("b", ".build/ignored.md")    // gitignored dot-dir
+    try write(".build/\n", ".gitignore")   // gitignore rule for .build
+    return root
+}
+
+// Asserted on file basenames rather than relativePath: on macOS the scanner
+// canonicalises the temp dir (stripping /private) so relativePath strings carry a
+// harmless prefix mismatch under a symlinked temp root. Each fixture basename maps to
+// exactly one decision case, so basenames fully identify which entries were returned.
+// visible.md/inner.md = plain, gh.md = hidden dir, .env = hidden file,
+// config = .git, pkg.md = node_modules, ignored.md = gitignored .build.
+
+@Test func fileScannerHidesDotEntriesByDefaultTest() throws {
+    let root = try makeHiddenFilesFixture()
+    defer { try? FileManager.default.removeItem(at: root) }
+
+    let names = Set(FileScanner.scan(directory: root.path, filter: .allFiles, showHidden: false)
+        .map(\.name))
+
+    // Regression guard: with the toggle off, only non-hidden entries appear.
+    #expect(names.contains("visible.md"))
+    #expect(names.contains("inner.md"))
+    #expect(!names.contains(".env"))
+    #expect(!names.contains("gh.md"))
+    #expect(!names.contains("config"))
+    #expect(!names.contains("pkg.md"))
+    #expect(!names.contains("ignored.md"))
+}
+
+@Test func fileScannerRevealsDotEntriesWhenShowHiddenTest() throws {
+    let root = try makeHiddenFilesFixture()
+    defer { try? FileManager.default.removeItem(at: root) }
+
+    let names = Set(FileScanner.scan(directory: root.path, filter: .allFiles, showHidden: true)
+        .map(\.name))
+
+    // Hidden files and directories are revealed (gh.md proves .github/ was traversed)...
+    #expect(names.contains("visible.md"))
+    #expect(names.contains("inner.md"))
+    #expect(names.contains("gh.md"))
+    #expect(names.contains(".env"))
+    // ...but the heavy dirs stay excluded by name...
+    #expect(!names.contains("config"))   // .git/config
+    #expect(!names.contains("pkg.md"))   // node_modules/pkg.md
+    // ...and gitignore still wins.
+    #expect(!names.contains("ignored.md"))   // .build/ignored.md
+}
+
 @Test func htmlHeadingParserIgnoresNavigationAndUsesMainHeadingsTest() {
     let html = """
     <html>

@@ -13,6 +13,7 @@ struct PreferencesView: View {
     @AppStorage("defaultTypography") private var defaultTypography = Constants.defaultTypography
     @AppStorage("defaultZoom") private var defaultZoom = Constants.zoomDefault
     @AppStorage("autoReload") private var autoReload = true
+    @AppStorage("showHiddenFiles") private var showHiddenFiles = false
     @AppStorage("sidebarSort") private var sidebarSort: String = SidebarSort.foldersFirst.rawValue
     @AppStorage("sidebarFontSize") private var sidebarFontSize: Double = 13
     @AppStorage("editorFontSize") private var editorFontSize: Double = 13
@@ -51,6 +52,10 @@ struct PreferencesView: View {
                 .onChange(of: autoReload) {
                     notifySettingsChanged()
                 }
+
+            // Reveals hidden (dot-prefixed) files and directories in the file browser.
+            // Propagation to open windows (re-scan on change) is wired separately.
+            Toggle("Show hidden files", isOn: $showHiddenFiles)
 
             Picker("Sidebar Sort", selection: $sidebarSort) {
                 Text("Folders First").tag(SidebarSort.foldersFirst.rawValue)

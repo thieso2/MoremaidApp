@@ -147,7 +147,7 @@ struct DirectoryWindowView: View {
                 // App-wide preference flipped (Preferences, ⇧⌘., or the View menu):
                 // re-scan this window live and keep the watcher's filter in sync.
                 Task { await fileWatcher.setShowHidden(showHiddenFiles) }
-                scanFiles()
+                rescanForHiddenToggle()
             }
     }
 
@@ -1026,6 +1026,28 @@ struct DirectoryWindowView: View {
         FileScanner.scanBatched(directory: directoryPath, filter: .allFiles, showHidden: showHiddenFiles, batchSize: 500) { batch, done in
             buffer.append(batch)
             if done { buffer.finish() }
+        }
+    }
+
+    /// Re-scan after the "Show Hidden Files" toggle flips. Unlike `scanFiles()`, this
+    /// scans into a full result off the main thread and swaps `projectFiles` in one
+    /// `withAnimation` step — so the Navigator's rows fade/slide in (or out) as the
+    /// hidden entries appear, instead of the list flashing empty and repopulating.
+    /// The toggle change is small and user-initiated, so a single (non-batched) scan is fine.
+    private func rescanForHiddenToggle() {
+        scanGeneration += 1
+        let generation = scanGeneration
+        let dir = directoryPath
+        let show = showHiddenFiles
+        DispatchQueue.global(qos: .userInitiated).async { [self] in
+            let files = FileScanner.scan(directory: dir, filter: .allFiles, showHidden: show)
+            DispatchQueue.main.async {
+                guard generation == scanGeneration else { return }
+                withAnimation(.easeInOut(duration: 0.25)) {
+                    projectFiles = files
+                }
+                activityStore.seedKnownPaths(files)
+            }
         }
     }
 

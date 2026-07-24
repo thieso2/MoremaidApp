@@ -241,6 +241,7 @@ struct EmptyWindowPlaceholder: View {
 struct AppCommands: Commands {
     let appState: AppState
     @Environment(\.openWindow) private var openWindow
+    @AppStorage("showHiddenFiles") private var showHiddenFiles = false
 
     private func recentIcon(_ recent: RecentTarget) -> String {
         switch recent {
@@ -444,6 +445,13 @@ struct AppCommands: Commands {
                 Label("Activity Feed", systemImage: "bell")
             }
             .keyboardShortcut("a", modifiers: [.command, .shift])
+
+            // App-wide "Show Hidden Files". Flipping the @AppStorage value updates
+            // UserDefaults, which every open window observes and re-scans on (ticket 1).
+            Toggle(isOn: $showHiddenFiles) {
+                Label("Show Hidden Files", systemImage: "eye")
+            }
+            .keyboardShortcut(".", modifiers: [.command, .shift])
 
             Divider()
 

@@ -273,22 +273,34 @@ struct SidebarView: View {
 
     private var outline: some View {
         ScrollViewReader { proxy in
-            ScrollView {
-                LazyVStack(alignment: .leading, spacing: 0) {
-                    if flatRows.isEmpty {
-                        Text(search.isEmpty ? "No files" : "No matches")
-                            .foregroundStyle(.tertiary)
-                            .font(.system(size: fontSize))
-                            .padding(16)
-                    } else {
-                        ForEach(flatRows) { row in
-                            rowView(row)
-                                .id(row.id)
-                        }
+            // Use `List` (not `ScrollView { LazyVStack { … } }`): on macOS `List`
+            // is backed by a virtualized NSTableView, so only the visible rows are
+            // ever measured/placed. The lazy-stack path forces the enclosing
+            // ScrollView to enumerate and measure *every* row to compute its total
+            // content height, which pins the main thread for many seconds once the
+            // flat row list gets large (big directories / deep heading trees).
+            List {
+                if flatRows.isEmpty {
+                    Text(search.isEmpty ? "No files" : "No matches")
+                        .foregroundStyle(.tertiary)
+                        .font(.system(size: fontSize))
+                        .padding(16)
+                        .listRowInsets(EdgeInsets())
+                        .listRowSeparator(.hidden)
+                        .listRowBackground(Color.clear)
+                } else {
+                    ForEach(flatRows) { row in
+                        rowView(row)
+                            .id(row.id)
+                            .listRowInsets(EdgeInsets())
+                            .listRowSeparator(.hidden)
+                            .listRowBackground(Color.clear)
                     }
                 }
-                .padding(.vertical, 4)
             }
+            .listStyle(.plain)
+            .scrollContentBackground(.hidden)
+            .environment(\.defaultMinListRowHeight, 0)
             .onChange(of: currentHeadingID) {
                 guard !currentHeadingID.isEmpty,
                       let file = selectedFile else { return }
@@ -443,6 +455,11 @@ struct SidebarView: View {
 
 private let sidebarRowIndent: CGFloat = 14
 
+/// Width of the leading disclosure-triangle column. Wide enough to be a
+/// reliable click target (the glyph itself is only ~9pt) and shared across
+/// folder / file / heading rows so their icons and text align.
+private let sidebarDisclosureWidth: CGFloat = 16
+
 struct SidebarFolderRow: View {
     let name: String
     let depth: Int
@@ -457,7 +474,7 @@ struct SidebarFolderRow: View {
                     .font(.system(size: 9, weight: .semibold))
                     .foregroundStyle(.secondary)
                     .rotationEffect(.degrees(isOpen ? 90 : 0))
-                    .frame(width: 10)
+                    .frame(width: sidebarDisclosureWidth)
                 Image(systemName: isOpen ? "folder" : "folder.fill")
                     .foregroundStyle(.secondary)
                     .font(.system(size: fontSize))
@@ -488,20 +505,21 @@ struct SidebarFileRow: View {
 
     var body: some View {
         HStack(spacing: 4) {
-            Group {
-                if hasChildren {
-                    Button(action: onToggle) {
-                        Image(systemName: "chevron.right")
-                            .font(.system(size: 9, weight: .semibold))
-                            .foregroundStyle(.secondary)
-                            .rotationEffect(.degrees(isOpen ? 90 : 0))
-                    }
-                    .buttonStyle(.plain)
-                } else {
-                    Color.clear
-                }
+            if hasChildren {
+                Image(systemName: "chevron.right")
+                    .font(.system(size: 9, weight: .semibold))
+                    .foregroundStyle(.secondary)
+                    .rotationEffect(.degrees(isOpen ? 90 : 0))
+                    .frame(width: sidebarDisclosureWidth)
+                    .frame(maxHeight: .infinity)
+                    .contentShape(Rectangle())
+                    // Nested tap wins over the row-wide select gesture below
+                    // (SwiftUI resolves the innermost tap first), so the whole
+                    // disclosure column reliably toggles instead of selecting.
+                    .onTapGesture { onToggle() }
+            } else {
+                Color.clear.frame(width: sidebarDisclosureWidth)
             }
-            .frame(width: 10)
 
             Image(systemName: iconName)
                 .foregroundStyle(.secondary)
@@ -544,20 +562,21 @@ struct SidebarHeadingRow: View {
 
     var body: some View {
         HStack(spacing: 4) {
-            Group {
-                if hasChildren {
-                    Button(action: onToggle) {
-                        Image(systemName: "chevron.right")
-                            .font(.system(size: 9, weight: .semibold))
-                            .foregroundStyle(.tertiary)
-                            .rotationEffect(.degrees(isCollapsed ? 0 : 90))
-                    }
-                    .buttonStyle(.plain)
-                } else {
-                    Color.clear
-                }
+            if hasChildren {
+                Image(systemName: "chevron.right")
+                    .font(.system(size: 9, weight: .semibold))
+                    .foregroundStyle(.tertiary)
+                    .rotationEffect(.degrees(isCollapsed ? 0 : 90))
+                    .frame(width: sidebarDisclosureWidth)
+                    .frame(maxHeight: .infinity)
+                    .contentShape(Rectangle())
+                    // Nested tap wins over the row-wide select gesture below
+                    // (SwiftUI resolves the innermost tap first), so the whole
+                    // disclosure column reliably toggles instead of selecting.
+                    .onTapGesture { onToggle() }
+            } else {
+                Color.clear.frame(width: sidebarDisclosureWidth)
             }
-            .frame(width: 10)
 
             Text(heading.text)
                 .font(.system(size: max(9, fontSize - 1)))

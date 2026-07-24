@@ -100,6 +100,69 @@ import Testing
     ))
 }
 
+// MARK: - Sidebar heading tree (document structure)
+
+private func he(_ level: Int, _ id: String) -> WebViewStore.HeadingEntry {
+    .init(level: level, text: id.capitalized, id: id)
+}
+
+@Test func headingTreeNestsByLevel() {
+    let tree = SidebarHeadingNode.tree(from: [
+        he(1, "title"),
+        he(2, "install"),
+        he(3, "macos"),
+        he(3, "linux"),
+        he(2, "usage"),
+        he(3, "cli"),
+        he(4, "flags"),
+    ])
+    #expect(tree.map(\.id) == ["title"])
+    let title = tree[0]
+    #expect(title.children.map(\.id) == ["install", "usage"])
+    #expect(title.children[0].children.map(\.id) == ["macos", "linux"])
+    let usage = title.children[1]
+    #expect(usage.children.map(\.id) == ["cli"])
+    #expect(usage.children[0].children.map(\.id) == ["flags"])
+}
+
+/// A section that jumps straight from H1 to H3 (no H2) still nests the H3
+/// under the H1 — it must not become a sibling root.
+@Test func headingTreeHandlesSkippedLevels() {
+    let tree = SidebarHeadingNode.tree(from: [
+        he(1, "a"),
+        he(3, "b"),
+        he(2, "c"),
+    ])
+    #expect(tree.map(\.id) == ["a"])
+    #expect(tree[0].children.map(\.id) == ["b", "c"])
+}
+
+/// Multiple top-level (H1) headings become sibling roots, each keeping its
+/// own subtree — collapsing one must not affect the other.
+@Test func headingTreeSupportsMultipleRoots() {
+    let tree = SidebarHeadingNode.tree(from: [
+        he(1, "first"),
+        he(2, "first-sub"),
+        he(1, "second"),
+        he(2, "second-sub"),
+    ])
+    #expect(tree.map(\.id) == ["first", "second"])
+    #expect(tree[0].children.map(\.id) == ["first-sub"])
+    #expect(tree[1].children.map(\.id) == ["second-sub"])
+}
+
+/// Deep chains (H1→H2→H3→H4→H5→H6) nest one level per heading so every
+/// level is independently collapsible.
+@Test func headingTreeNestsDeepChain() {
+    let tree = SidebarHeadingNode.tree(from: (1...6).map { he($0, "h\($0)") })
+    var node = tree
+    for level in 1...6 {
+        #expect(node.map(\.id) == ["h\(level)"])
+        node = node[0].children
+    }
+    #expect(node.isEmpty)
+}
+
 @Test func htmlHeadingParserIgnoresNavigationAndUsesMainHeadingsTest() {
     let html = """
     <html>

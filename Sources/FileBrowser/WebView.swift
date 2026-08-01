@@ -473,6 +473,7 @@ struct WebView: NSViewRepresentable {
         let handler = context.coordinator
         config.userContentController.add(handler, name: "nativeLog")
         config.userContentController.add(handler, name: "linkHover")
+        config.userContentController.add(handler, name: "openDiagram")
         let consoleScript = WKUserScript(source: """
             (function() {
                 var orig = console.log;
@@ -623,6 +624,15 @@ struct WebView: NSViewRepresentable {
         }
 
         nonisolated func userContentController(_ controller: WKUserContentController, didReceive message: WKScriptMessage) {
+            if message.name == "openDiagram" {
+                guard let dict = message.body as? [String: Any],
+                      let definition = dict["definition"] as? String, !definition.isEmpty else { return }
+                let theme = dict["theme"] as? String ?? Constants.defaultTheme
+                Task { @MainActor in
+                    DiagramWindowController.present(definition: definition, theme: theme)
+                }
+                return
+            }
             if message.name == "linkHover", let href = message.body as? String {
                 (message.webView as? MoremaidWebView)?.currentHoveredLink = href
                 Task { @MainActor in

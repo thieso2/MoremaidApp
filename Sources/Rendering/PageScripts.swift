@@ -110,43 +110,13 @@ enum PageScripts {
     // MARK: - Mermaid Fullscreen
 
     private static let mermaidFullscreenScript = """
-    window.childWindows = window.childWindows || [];
-
     function openMermaidInNewWindow(graphDefinition) {
-        var newWindow = window.open('', '_blank', 'width=800,height=600,scrollbars=yes,resizable=yes');
-        if (newWindow) {
-            window.childWindows.push(newWindow);
-            newWindow.addEventListener('beforeunload', function() {
-                var index = window.childWindows.indexOf(newWindow);
-                if (index > -1) window.childWindows.splice(index, 1);
-            });
-        }
         var ct = document.documentElement.getAttribute('data-theme') || 'light';
-        var bgColors = { light: 'white', dark: '#1a1a1a', github: '#ffffff', 'github-dark': '#0d1117', dracula: '#282a36', nord: '#2e3440', 'solarized-light': '#fdf6e3', 'solarized-dark': '#002b36', monokai: '#272822', 'one-dark': '#282c34' };
-        var bgColor = bgColors[ct] || 'white';
-
-        var html = '<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><title>Mermaid Diagram</title>' +
-            '<script src="https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.min.js"></' + 'script>' +
-            '<style>body{margin:0;padding:20px;display:flex;justify-content:center;align-items:center;min-height:100vh;background:' + bgColor + ';font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif}#diagram{max-width:100%;overflow:auto}</style></head>' +
-            '<body><div id="diagram" class="mermaid">' + graphDefinition + '</div>' +
-            '<script>var theme="' + ct + '";var themes=' + JSON.stringify(themes) + ';' +
-            'var themeConfig=themes[theme]||themes.light;var mermaidTheme=themeConfig.mermaid;' +
-            'var themeVariables=' + JSON.stringify(themeVariables) + ';' +
-            'var variables=themeVariables.light;' +
-            'if(theme==="dark"||theme==="one-dark")variables=themeVariables.dark;' +
-            'else if(theme==="github")variables=themeVariables.github;' +
-            'else if(theme==="github-dark")variables=Object.assign({},themeVariables.github,{background:"#0d1117"});' +
-            'else if(theme==="dracula")variables=themeVariables.dracula;' +
-            'else if(theme==="nord")variables=themeVariables.nord;' +
-            'else if(theme==="solarized-light")variables=themeVariables.solarized;' +
-            'else if(theme==="solarized-dark")variables=Object.assign({},themeVariables.solarized,{background:"#002b36"});' +
-            'else if(theme==="monokai")variables=themeVariables.monokai;' +
-            'mermaid.initialize({startOnLoad:true,theme:mermaidTheme,themeVariables:variables});' +
-            'setInterval(function(){try{if(!window.opener||window.opener.closed){window.close()}}catch(e){window.close()}},500);' +
-            '</' + 'script></body></html>';
-
-        newWindow.document.write(html);
-        newWindow.document.close();
+        try {
+            window.webkit.messageHandlers.openDiagram.postMessage({ definition: graphDefinition, theme: ct });
+        } catch (e) {
+            console.error('openDiagram bridge unavailable: ' + e);
+        }
     }
     """
 

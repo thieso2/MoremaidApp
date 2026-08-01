@@ -81,6 +81,30 @@ enum MermaidConfig {
         }
     }
 
+    /// Theme variables as a JSON object literal for `mermaid.initialize`.
+    static func variablesJSON(for theme: String) -> String {
+        let (_, v) = variablesForTheme(theme)
+        var dict: [String: String] = [
+            "primaryColor": v.primaryColor,
+            "primaryTextColor": v.primaryTextColor,
+            "primaryBorderColor": v.primaryBorderColor,
+            "lineColor": v.lineColor,
+            "secondaryColor": v.secondaryColor,
+        ]
+        dict["tertiaryColor"] = v.tertiaryColor
+        dict["mainBkg"] = v.mainBkg
+        dict["secondBkg"] = v.secondBkg
+        dict["tertiaryBkg"] = v.tertiaryBkg
+        // github-dark / solarized-dark share a variable set but need their own background
+        switch theme {
+        case "github-dark": dict["background"] = "#0d1117"
+        case "solarized-dark": dict["background"] = "#002b36"
+        default: dict["background"] = v.background
+        }
+        let data = try? JSONSerialization.data(withJSONObject: dict, options: [.sortedKeys])
+        return data.flatMap { String(data: $0, encoding: .utf8) } ?? "{}"
+    }
+
     /// Background colors for mermaid fullscreen window per theme.
     static let fullscreenBackgrounds: [String: String] = [
         "light": "white",

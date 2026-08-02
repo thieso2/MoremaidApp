@@ -330,7 +330,7 @@ jobs:
             desc "Markdown viewer for macOS"
             homepage "https://github.com/REPO_PLACEHOLDER"
 
-            depends_on macos: ">= :tahoe"
+            depends_on macos: :tahoe
 
             app "Moremaid.app"
 
